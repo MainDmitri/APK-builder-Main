@@ -7,6 +7,7 @@ on:
       - 'packages/**'
       - 'docs/**'
       - '.github/workflows/engine.yml'
+      - '.github/scripts/**'
   pull_request:
     paths:
       - 'engine/**'
@@ -102,3 +103,43 @@ jobs:
           docker tag appbuilder-engine:ci "${image}:${GITHUB_SHA::7}"
           docker push "${image}:latest"
           docker push "${image}:${GITHUB_SHA::7}"
+
+  emulator:
+    name: Install & launch sample APKs (API ${{ matrix.api }})
+    needs: docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [24, 36]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: engine-selftest
+          path: selftest-out
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: >-
+            bash .github/scripts/emulator-install-test.sh emulator-out
+            selftest-out/static-notes.apk=net.appbuilder.samples.notes
+            selftest-out/vite-react.apk=net.appbuilder.samples.habits
+            selftest-out/native-compose.apk=net.appbuilder.samples.counter
+            selftest-out/native-views.apk=net.appbuilder.samples.tips
+            selftest-out/gradle-project.apk=net.appbuilder.samples.deviceinfo
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: emulator-samples-api${{ matrix.api }}
+          path: emulator-out/

@@ -6,6 +6,7 @@ on:
       - 'app/**'
       - 'packages/**'
       - '.github/workflows/app.yml'
+      - '.github/scripts/**'
   workflow_dispatch:
 
 permissions:
@@ -82,6 +83,40 @@ jobs:
           name: appbuilder-android
           path: dist/*.apk
 
+  emulator:
+    name: Install & launch on emulator (API ${{ matrix.api }})
+    needs: android
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [24, 36]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: appbuilder-android
+          path: dist
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash .github/scripts/emulator-install-test.sh emulator-out "$(ls dist/*.apk | head -1)=net.appbuilder.app"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: emulator-app-api${{ matrix.api }}
+          path: emulator-out/
+
   web:
     name: Web build
     runs-on: ubuntu-latest
@@ -152,7 +187,7 @@ jobs:
 
   release:
     name: Publish "app-latest" pre-release
-    needs: [android, web, linux, windows]
+    needs: [android, emulator, web, linux, windows]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
