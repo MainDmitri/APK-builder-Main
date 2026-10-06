@@ -1,0 +1,18 @@
+{
+  "id": "20261006214302-1c5ac3",
+  "createdAt": "2026-10-06T21:43:02.397123Z",
+  "projectFileName": "m1ainvpn.zip",
+  "options": {
+    "appName": "MAIN VPN V2",
+    "packageName": "com.example.mainvpn",
+    "versionName": "1.0.0",
+    "versionCode": 1,
+    "orientation": "portrait",
+    "permissions": [
+      "internet",
+      "storage",
+      "notifications"
+    ],
+    "signing": "debug"
+  }
+}
