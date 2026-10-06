@@ -1,0 +1,179 @@
+name: App
+
+on:
+  push:
+    paths:
+      - 'app/**'
+      - 'packages/**'
+      - '.github/workflows/app.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: app-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: 3.47.6
+
+jobs:
+  android:
+    name: Android APK + tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      # A stable signing key lets new builds install over old ones.
+      # Repository secrets win; otherwise a generated key is kept in the Actions cache.
+      - uses: actions/cache@v4
+        with:
+          path: app/android/app/appbuilder-release.jks
+          key: appbuilder-app-signing-v1
+      - name: Release signing key
+        env:
+          APP_KEYSTORE_BASE64: ${{ secrets.APP_KEYSTORE_BASE64 }}
+          APP_KEYSTORE_PASSWORD: ${{ secrets.APP_KEYSTORE_PASSWORD }}
+          APP_KEY_ALIAS: ${{ secrets.APP_KEY_ALIAS }}
+          APP_KEY_PASSWORD: ${{ secrets.APP_KEY_PASSWORD }}
+        run: |
+          if [ -n "$APP_KEYSTORE_BASE64" ]; then
+            echo "$APP_KEYSTORE_BASE64" | base64 -d > android/app/appbuilder-release.jks
+            store_pass="$APP_KEYSTORE_PASSWORD"; alias="$APP_KEY_ALIAS"; key_pass="${APP_KEY_PASSWORD:-$APP_KEYSTORE_PASSWORD}"
+          else
+            store_pass="appbuilder-ci-key"; alias="appbuilder"; key_pass="appbuilder-ci-key"
+            if [ ! -f android/app/appbuilder-release.jks ]; then
+              keytool -genkeypair -noprompt -keystore android/app/appbuilder-release.jks -storetype PKCS12 \
+                -storepass "$store_pass" -keypass "$key_pass" -alias "$alias" -keyalg RSA -keysize 2048 \
+                -validity 10000 -dname "CN=AppBuilder,O=AppBuilder,C=RU"
+            fi
+          fi
+          printf 'storeFile=appbuilder-release.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+            "$store_pass" "$alias" "$key_pass" > android/key.properties
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - name: Build APK
+        run: flutter build apk --release
+      - name: Collect APK
+        id: apk
+        run: |
+          version=$(grep '^version:' pubspec.yaml | sed 's/version: *//; s/+.*//')
+          name="AppBuilder-${version}-build${GITHUB_RUN_NUMBER}.apk"
+          mkdir -p ../dist
+          cp build/app/outputs/flutter-apk/app-release.apk "../dist/$name"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner" verify --print-certs "../dist/$name" | head -5
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appbuilder-android
+          path: dist/*.apk
+
+  web:
+    name: Web build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build web --release
+      - run: cd build/web && zip -qr ../../../AppBuilder-web.zip .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appbuilder-web
+          path: AppBuilder-web.zip
+
+  linux:
+    name: Linux desktop build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -q && sudo apt-get install -y -q clang cmake ninja-build pkg-config libgtk-3-dev
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build linux --release
+      - run: tar -czf ../AppBuilder-linux-x64.tar.gz -C build/linux/x64/release/bundle .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appbuilder-linux
+          path: AppBuilder-linux-x64.tar.gz
+
+  windows:
+    name: Windows desktop build
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build windows --release
+      - run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath ../AppBuilder-windows-x64.zip
+        shell: pwsh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appbuilder-windows
+          path: AppBuilder-windows-x64.zip
+
+  release:
+    name: Publish "app-latest" pre-release
+    needs: [android, web, linux, windows]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Replace the rolling release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ls -l artifacts
+          gh release delete app-latest --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
+          gh release create app-latest --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title "AppBuilder — последняя сборка (#${GITHUB_RUN_NUMBER})" \
+            --notes "Сборка из ветки ${GITHUB_REF_NAME} (${GITHUB_SHA::7}).
+
+          - **AppBuilder-*.apk** — Android (установите, разрешив «Установку из неизвестных источников»).
+          - **AppBuilder-windows-x64.zip** — Windows, запуск appbuilder.exe.
+          - **AppBuilder-linux-x64.tar.gz** — Linux, запуск ./appbuilder.
+          - **AppBuilder-web.zip** — веб-версия (любой статический хостинг).
+
+          Для сборки APK из ZIP укажите в «Настройках» свой AppBuilder Engine или режим GitHub Actions." \
+            artifacts/*
