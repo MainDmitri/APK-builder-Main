@@ -1,0 +1,104 @@
+name: Engine
+
+on:
+  push:
+    paths:
+      - 'engine/**'
+      - 'packages/**'
+      - 'docs/**'
+      - '.github/workflows/engine.yml'
+  pull_request:
+    paths:
+      - 'engine/**'
+      - 'packages/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    name: Dart tests (core + engine)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: 3.13.5
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install librsvg
+        run: sudo apt-get update -q && sudo apt-get install -y -q librsvg2-bin fonts-dejavu-core
+      - name: Core — analyze & test
+        working-directory: packages/appbuilder_core
+        run: |
+          dart pub get
+          dart analyze --fatal-infos
+          dart test
+      - name: Engine — analyze & test
+        working-directory: engine
+        run: |
+          dart pub get
+          dart analyze --fatal-infos
+          dart test
+
+  docker:
+    name: Docker image + end-to-end APK builds
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image (includes warm-up builds of two samples)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: engine/Dockerfile
+          load: true
+          tags: appbuilder-engine:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Self-test — build every sample APK inside the container
+        run: |
+          mkdir -p selftest-out && chmod 777 selftest-out
+          docker run --rm -v "$PWD/selftest-out:/out" appbuilder-engine:ci \
+            selftest --samples /opt/appbuilder/samples --out /out
+      - name: HTTP API smoke test
+        run: |
+          docker run -d --name engine -p 8080:8080 -e ENGINE_TOKEN=ci-token appbuilder-engine:ci
+          for i in $(seq 1 30); do curl -fs http://127.0.0.1:8080/health > /dev/null && break; sleep 2; done
+          curl -fs http://127.0.0.1:8080/health
+          curl -fs http://127.0.0.1:8080/docs/agent-contract.md | head -5
+          (cd engine/samples/static-notes && zip -qr ../../../static-notes.zip .)
+          id=$(curl -fs -H "Authorization: Bearer ci-token" -F project=@static-notes.zip \
+               -F 'options={"signing":"debug","versionCode":2}' http://127.0.0.1:8080/api/builds | jq -r .id)
+          echo "build id: $id"
+          for i in $(seq 1 120); do
+            state=$(curl -fs -H "Authorization: Bearer ci-token" "http://127.0.0.1:8080/api/builds/$id" | jq -r .state)
+            echo "state: $state"
+            [ "$state" = "succeeded" ] && break
+            [ "$state" = "failed" ] && curl -fs -H "Authorization: Bearer ci-token" "http://127.0.0.1:8080/api/builds/$id/log" && exit 1
+            sleep 5
+          done
+          curl -fs -H "Authorization: Bearer ci-token" -o selftest-out/api-build.apk "http://127.0.0.1:8080/api/builds/$id/apk"
+          ls -l selftest-out
+          docker rm -f engine
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: engine-selftest
+          path: selftest-out/
+      - name: Push image to GHCR
+        if: github.event_name != 'pull_request'
+        run: |
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          image="ghcr.io/${owner}/appbuilder-engine"
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker tag appbuilder-engine:ci "${image}:latest"
+          docker tag appbuilder-engine:ci "${image}:${GITHUB_SHA::7}"
+          docker push "${image}:latest"
+          docker push "${image}:${GITHUB_SHA::7}"

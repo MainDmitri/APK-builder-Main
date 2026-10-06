@@ -1,0 +1,14 @@
+{
+  "appName": "Заметки",
+  "packageName": "net.appbuilder.samples.notes",
+  "versionName": "1.0.0",
+  "versionCode": 1,
+  "orientation": "portrait",
+  "permissions": ["storage"],
+  "web": {
+    "startUrl": "index.html",
+    "fullscreen": false,
+    "themeColor": "#1565C0",
+    "backgroundColor": "#F5F7FB"
+  }
+}

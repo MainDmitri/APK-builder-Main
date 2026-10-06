@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Чаевые</string>
+    <string name="bill_hint">Сумма счёта</string>
+    <string name="people_hint">Количество человек</string>
+    <string name="tip_label">Чаевые: %1$d%%</string>
+    <string name="result_template">Чаевые: %1$s\nИтого: %2$s\nС каждого: %3$s</string>
+    <string name="result_empty">Введите сумму счёта</string>
+</resources>

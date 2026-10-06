@@ -458,6 +458,7 @@ class ProjectAnalyzer {
       namespace: namespace,
       applicationId: applicationId,
       mainActivity: mainActivity,
+      label: manifest == null ? null : _appLabel(ctx, manifest, '${moduleBase}src/main'),
       usesKotlin: sources.any((f) => f.endsWith('.kt')),
       usesCompose: buildText.contains('compose'),
       hasLauncher: hasLauncher,
@@ -543,6 +544,7 @@ class ProjectAnalyzer {
       namespace: namespace,
       applicationId: namespace,
       mainActivity: launcherName == null || namespace == null ? null : _qualify(launcherName, namespace),
+      label: _appLabel(ctx, manifest, root),
       usesKotlin: kotlinSources.isNotEmpty,
       usesCompose: usesCompose,
       hasLauncher: hasLauncher,
@@ -601,6 +603,20 @@ class ProjectAnalyzer {
   }
 
   // ---------------------------------------------------------------- helpers
+
+  /// `android:label` of `<application>`; `@string/x` is looked up in
+  /// `<sourceSet>/res/values/strings.xml`.
+  static String? _appLabel(_Ctx ctx, String manifest, String sourceSetRoot) {
+    final app = RegExp(r'<application\b[^>]*>', dotAll: true).firstMatch(manifest)?.group(0);
+    final raw = app == null ? null : RegExp(r'android:label\s*=\s*"([^"]+)"').firstMatch(app)?.group(1);
+    if (raw == null) return null;
+    if (!raw.startsWith('@string/')) return raw;
+    final base = sourceSetRoot.isEmpty ? '' : '$sourceSetRoot/';
+    final strings = ctx.read('${base}res/values/strings.xml');
+    final name = RegExp.escape(raw.substring('@string/'.length));
+    final value = strings == null ? null : RegExp('<string\\s+name="$name"[^>]*>([^<]*)</string>').firstMatch(strings)?.group(1);
+    return value?.replaceAll(r"\'", "'").replaceAll(r'\"', '"').trim();
+  }
 
   static String? _manifestPackage(String manifest) =>
       RegExp(r'<manifest\b[^>]*\bpackage\s*=\s*"([^"]+)"', dotAll: true).firstMatch(manifest)?.group(1);

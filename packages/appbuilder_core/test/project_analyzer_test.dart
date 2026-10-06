@@ -109,14 +109,15 @@ void main() {
       final a = analyzeFiles({
         'appbuilder.json': '{"packageName":"com.example.notes"}',
         'app/src/main/AndroidManifest.xml': '<manifest xmlns:android="http://schemas.android.com/apk/res/android">'
-            '<application><activity android:name=".MainActivity" android:exported="true"><intent-filter>'
+            '<application android:label="@string/app_name"><activity android:name=".MainActivity" android:exported="true"><intent-filter>'
             '<action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/>'
             '</intent-filter></activity></application></manifest>',
         'app/src/main/java/com/example/notes/MainActivity.kt':
             'package com.example.notes\nimport androidx.compose.material3.Text\nclass MainActivity : ComponentActivity()',
-        'app/src/main/res/values/strings.xml': '<resources/>',
+        'app/src/main/res/values/strings.xml': '<resources><string name="app_name">Notes \\\'X\\\'</string></resources>',
       });
       expect(a.kind, ProjectKind.nativeSources);
+      expect(a.native!.label, "Notes 'X'");
       expect(a.canBuild, isTrue, reason: a.errors.join());
       expect(a.native!.sourceSetRoot, 'app/src/main');
       expect(a.native!.namespace, 'com.example.notes');

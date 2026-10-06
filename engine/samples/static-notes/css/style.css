@@ -1,0 +1,49 @@
+:root {
+  --primary: #1565C0;
+  --bg: #F5F7FB;
+  --card: #FFFFFF;
+  --text: #1B1F24;
+  --muted: #5F6B7A;
+  --danger: #C62828;
+  font-family: system-ui, -apple-system, Roboto, sans-serif;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #111418; --card: #1C2128; --text: #E6EAF0; --muted: #9AA5B4; }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  padding-bottom: calc(96px + env(safe-area-inset-bottom));
+}
+.bar {
+  position: sticky; top: 0; z-index: 1;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; background: var(--primary); color: #fff;
+}
+.bar h1 { margin: 0; font-size: 20px; font-weight: 600; }
+.icon-btn { min-width: 48px; min-height: 48px; border: 0; border-radius: 24px; background: transparent; color: inherit; font-size: 22px; }
+main { padding: 16px; max-width: 720px; margin: 0 auto; }
+.search { width: 100%; min-height: 48px; padding: 0 16px; border-radius: 24px; border: 1px solid #C5CEDA; background: var(--card); color: var(--text); font-size: 16px; }
+.empty { color: var(--muted); text-align: center; margin-top: 48px; }
+.list { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 12px; }
+.note { background: var(--card); border-radius: 16px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.12); cursor: pointer; }
+.note h2 { margin: 0 0 6px; font-size: 17px; }
+.note p { margin: 0; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.note time { display: block; margin-top: 8px; font-size: 12px; color: var(--muted); }
+.fab {
+  position: fixed; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom));
+  width: 64px; height: 64px; border-radius: 20px; border: 0;
+  background: var(--primary); color: #fff; font-size: 32px; box-shadow: 0 4px 12px rgba(0,0,0,.25);
+}
+.editor { width: min(640px, 94vw); border: 0; border-radius: 20px; padding: 0; background: var(--card); color: var(--text); }
+.editor::backdrop { background: rgba(0,0,0,.4); }
+.editor form { display: grid; gap: 12px; padding: 20px; }
+.editor input, .editor textarea { width: 100%; font: inherit; font-size: 16px; padding: 12px; border-radius: 12px; border: 1px solid #C5CEDA; background: transparent; color: inherit; }
+.actions { display: flex; gap: 8px; align-items: center; }
+.actions .spacer { flex: 1; }
+.actions button { min-height: 44px; padding: 0 16px; border-radius: 22px; border: 0; font: inherit; background: transparent; color: var(--primary); }
+.actions .primary { background: var(--primary); color: #fff; }
+.actions .danger { color: var(--danger); }

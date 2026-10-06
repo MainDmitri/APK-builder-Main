@@ -1,0 +1,12 @@
+{
+  "appName": "Счётчик",
+  "packageName": "net.appbuilder.samples.counter",
+  "versionName": "1.0.0",
+  "versionCode": 1,
+  "orientation": "portrait",
+  "permissions": [],
+  "android": {
+    "compose": true,
+    "dependencies": []
+  }
+}

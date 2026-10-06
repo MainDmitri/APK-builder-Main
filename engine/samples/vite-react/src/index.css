@@ -1,0 +1,10 @@
+@import "tailwindcss";
+
+:root {
+  font-family: system-ui, -apple-system, Roboto, sans-serif;
+}
+
+body {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}

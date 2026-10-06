@@ -70,6 +70,7 @@ class ResolvedAppConfig {
         config.appName ??
         manifest?.name ??
         manifest?.shortName ??
+        native?.label ??
         _prettify(analysis.node?.packageName) ??
         'My App';
 

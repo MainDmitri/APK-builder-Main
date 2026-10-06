@@ -1,0 +1,12 @@
+.git
+.github
+app
+inbox
+docs
+**/.dart_tool
+**/build
+**/node_modules
+**/dist
+engine/data
+engine/selftest-out
+*.apk

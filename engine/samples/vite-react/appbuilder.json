@@ -1,0 +1,13 @@
+{
+  "appName": "Привычки",
+  "packageName": "net.appbuilder.samples.habits",
+  "versionName": "1.0.0",
+  "versionCode": 1,
+  "orientation": "portrait",
+  "permissions": ["vibration"],
+  "web": {
+    "outputDir": "dist",
+    "themeColor": "#2E7D32",
+    "backgroundColor": "#FFFFFF"
+  }
+}

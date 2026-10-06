@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shell_file_saved">Сохранено: %1$s</string>
+    <string name="shell_file_save_failed">Не удалось сохранить файл</string>
+    <string name="shell_download_started">Загрузка %1$s…</string>
+    <string name="shell_no_app">Нет приложения для открытия ссылки</string>
+</resources>

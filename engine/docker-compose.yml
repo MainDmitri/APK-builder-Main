@@ -1,0 +1,20 @@
+# docker compose -f engine/docker-compose.yml up -d --build
+services:
+  engine:
+    build:
+      context: ..
+      dockerfile: engine/Dockerfile
+    image: appbuilder-engine:local
+    ports:
+      - "8080:8080"
+    environment:
+      ENGINE_TOKEN: ${ENGINE_TOKEN:?Задайте ENGINE_TOKEN в .env или окружении}
+      MAX_PARALLEL_BUILDS: "1"
+      BUILD_RETENTION_HOURS: "24"
+      MAX_UPLOAD_MB: "200"
+    volumes:
+      - appbuilder-data:/data
+    restart: unless-stopped
+
+volumes:
+  appbuilder-data:

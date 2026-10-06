@@ -1,0 +1,9 @@
+// AppBuilder Engine init script for uploaded Gradle projects:
+// lintVital* tasks are disabled so that release builds are not blocked by lint.
+gradle.allprojects { project ->
+    project.tasks.configureEach { task ->
+        if (task.name.startsWith('lintVital')) {
+            task.enabled = false
+        }
+    }
+}

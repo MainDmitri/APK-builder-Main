@@ -1,0 +1,147 @@
+name: Inbox build
+
+# Serverless mode: the AppBuilder app (or you, via the GitHub web UI) commits
+#   inbox/<id>/project.zip + inbox/<id>/request.json
+# and this workflow builds the APK with the same engine code and publishes it
+# as the pre-release "build-<id>" (assets: APK, build.log, result.json).
+
+on:
+  push:
+    paths:
+      - 'inbox/**/request.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: inbox-build-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GRADLE_VERSION: 9.3.1
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Uploaded projects run their own build scripts: never leave a token in .git/config.
+          persist-credentials: false
+      - name: Find requests without a published result
+        id: pending
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pending=""
+          for req in inbox/*/request.json; do
+            [ -f "$req" ] || continue
+            id=$(basename "$(dirname "$req")")
+            if gh release view "build-$id" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+              echo "build-$id already published — skip"
+            else
+              pending="$pending $id"
+            fi
+          done
+          echo "ids=${pending# }" >> "$GITHUB_OUTPUT"
+          echo "Pending: ${pending:-none}"
+      - uses: dart-lang/setup-dart@v1
+        if: steps.pending.outputs.ids != ''
+        with:
+          sdk: 3.13.5
+      - uses: actions/setup-java@v4
+        if: steps.pending.outputs.ids != ''
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-node@v4
+        if: steps.pending.outputs.ids != ''
+        with:
+          node-version: '24'
+      - name: Install Gradle, librsvg, corepack
+        if: steps.pending.outputs.ids != ''
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q librsvg2-bin fonts-dejavu-core
+          curl -fsSL -o /tmp/gradle.zip "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip"
+          unzip -q /tmp/gradle.zip -d "$HOME"
+          echo "$HOME/gradle-${GRADLE_VERSION}/bin" >> "$GITHUB_PATH"
+          corepack enable
+      - name: Restore debug keystore (stable signature between builds) and Gradle cache
+        if: steps.pending.outputs.ids != ''
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/appbuilder-data/keys
+          key: appbuilder-debug-keystore-v1
+      - uses: actions/cache@v4
+        if: steps.pending.outputs.ids != ''
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('engine/templates/**', 'packages/appbuilder_core/lib/src/toolchain.dart') }}
+          restore-keys: gradle-
+      - name: Prepare engine
+        if: steps.pending.outputs.ids != ''
+        working-directory: engine
+        run: dart pub get
+      - name: Build requests
+        if: steps.pending.outputs.ids != ''
+        env:
+          IDS: ${{ steps.pending.outputs.ids }}
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          APPBUILDER_STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          APPBUILDER_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          APPBUILDER_DATA: ${{ runner.temp }}/appbuilder-data
+          APPBUILDER_TEMPLATES: ${{ github.workspace }}/engine/templates
+          GRADLE_USER_HOME: /home/runner/.gradle
+        run: |
+          mkdir -p "$RUNNER_TEMP/results"
+          for id in $IDS; do
+            dir="inbox/$id"
+            out="$RUNNER_TEMP/results/$id"
+            mkdir -p "$out"
+            jq '.options // {}' "$dir/request.json" > "$out/options.json"
+            signing=$(jq -r '.options.signing // "debug"' "$dir/request.json")
+            ks_args=()
+            if [ "$signing" = "repo-secrets" ]; then
+              if [ -z "$KEYSTORE_BASE64" ]; then
+                echo '{"success":false,"error":"Секрет KEYSTORE_BASE64 не задан в настройках репозитория"}' > "$out/result.json"
+                echo "KEYSTORE_BASE64 secret is missing" > "$out/build.log"
+                continue
+              fi
+              echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+              ks_args=(--keystore "$RUNNER_TEMP/release.keystore" --key-alias "$KEY_ALIAS")
+            fi
+            set +e
+            (cd engine && dart run bin/engine.dart build "../$dir/project.zip" \
+                --options "@$out/options.json" "${ks_args[@]}" \
+                --out "$out/" --result-json "$out/result.json") 2>&1 | tee "$out/build.log"
+            set -e
+            rm -f "$RUNNER_TEMP/release.keystore"
+            [ -f "$out/result.json" ] || echo '{"success":false,"error":"Движок завершился без результата, см. build.log"}' > "$out/result.json"
+          done
+      - name: Publish results as pre-releases
+        if: steps.pending.outputs.ids != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IDS: ${{ steps.pending.outputs.ids }}
+        run: |
+          for id in $IDS; do
+            out="$RUNNER_TEMP/results/$id"
+            success=$(jq -r '.success' "$out/result.json")
+            name=$(jq -r '.app.appName // "APK"' "$out/result.json")
+            if [ "$success" = "true" ]; then
+              title="✅ $name — build $id"
+              notes="Подписанный APK собран AppBuilder Engine. Схемы подписи: $(jq -r '.signingSchemes | join(", ")' "$out/result.json")."
+            else
+              title="❌ Ошибка сборки $id"
+              notes=$(jq -r '.error' "$out/result.json")
+            fi
+            gh release create "build-$id" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+              --title "$title" --notes "$notes" "$out"/*.apk "$out/build.log" "$out/result.json" 2>/dev/null \
+            || gh release create "build-$id" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+              --title "$title" --notes "$notes" "$out/build.log" "$out/result.json"
+          done

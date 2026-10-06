@@ -75,6 +75,7 @@ class NativeProjectInfo {
     this.namespace,
     this.applicationId,
     this.mainActivity,
+    this.label,
     this.usesKotlin = false,
     this.usesCompose = false,
     this.hasLauncher = false,
@@ -102,6 +103,9 @@ class NativeProjectInfo {
 
   /// Fully qualified launcher activity class name.
   final String? mainActivity;
+
+  /// Application label (android:label, resolved from strings.xml).
+  final String? label;
   final bool usesKotlin;
   final bool usesCompose;
   final bool hasLauncher;
@@ -126,6 +130,7 @@ class NativeProjectInfo {
         if (namespace != null) 'namespace': namespace,
         if (applicationId != null) 'applicationId': applicationId,
         if (mainActivity != null) 'mainActivity': mainActivity,
+        if (label != null) 'label': label,
         'usesKotlin': usesKotlin,
         'usesCompose': usesCompose,
         'hasLauncher': hasLauncher,
@@ -174,6 +179,23 @@ class ProjectAnalysis {
   final String? indexHtml;
 
   bool get canBuild => kind != ProjectKind.unsupported && errors.isEmpty;
+
+  /// Same analysis with the web manifest found in the build output
+  /// (Node.js projects) and extra warnings.
+  ProjectAnalysis withWebRoot({WebManifest? manifest, String? manifestPath, List<String> extraWarnings = const []}) =>
+      ProjectAnalysis(
+        kind: kind,
+        rootPrefix: rootPrefix,
+        fileCount: fileCount,
+        errors: errors,
+        warnings: [...warnings, ...extraWarnings],
+        config: config,
+        manifest: manifest ?? this.manifest,
+        manifestPath: manifestPath ?? this.manifestPath,
+        node: node,
+        native: native,
+        indexHtml: indexHtml,
+      );
 
   BuildPlan get plan => BuildPlan.forKind(kind);
 
