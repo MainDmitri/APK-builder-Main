@@ -1,0 +1,31 @@
+name: Retag after history rewrite
+
+on:
+  push:
+    branches: [ccr-57a3c0be-o72ooj]
+    paths: ['.github/workflows/retag.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  retag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Point tags at the rewritten commits with identical trees
+        run: |
+          git fetch --force origin 'refs/tags/*:refs/tags/*'
+          declare -A by_tree
+          for c in $(git rev-list HEAD); do by_tree[$(git rev-parse "$c^{tree}")]=$c; done
+          for t in $(git tag); do
+            old=$(git rev-parse "$t^{commit}")
+            new=${by_tree[$(git rev-parse "$old^{tree}")]:-}
+            if [ -n "$new" ] && [ "$old" != "$new" ]; then
+              git tag -f "$t" "$new"
+              git push --force origin "refs/tags/$t"
+              echo "$t: $old -> $new"
+            fi
+          done
