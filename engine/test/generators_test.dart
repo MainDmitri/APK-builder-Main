@@ -98,6 +98,84 @@ void main() {
         contains('@color/appbuilder_ic_launcher_background'));
   });
 
+  String redIcon() {
+    final picture = img.Image(width: 64, height: 64, numChannels: 4);
+    img.fill(picture, color: img.ColorRgba8(255, 0, 0, 255));
+    final file = File(p.join(tmp.path, 'icon.png'))..writeAsBytesSync(img.encodePng(picture));
+    return file.path;
+  }
+
+  test('custom icon replaces the web project icon', () async {
+    final analysis = analyzeSample('static-notes');
+    final app = ResolvedAppConfig.resolve(analysis, const BuildOptions());
+    final webRoot = p.join('samples', 'static-notes');
+    final source = DirectorySource(webRoot);
+    final info = ProjectAnalyzer.inspectWebRoot(source.paths.toSet(), source.readText, []);
+    final android = p.join(tmp.path, 'android');
+    await WebShellGenerator(config)
+        .generate(webRoot: webRoot, androidDir: android, app: app, webInfo: info, log: log, customIcon: redIcon());
+    final res = p.join(android, 'app', 'src', 'main', 'res');
+    expect(File(p.join(res, 'values', 'launcher_colors.xml')).readAsStringSync(), contains('#FF0000'));
+    final legacy = img.decodePng(File(p.join(res, 'mipmap-xxxhdpi', 'ic_launcher.png')).readAsBytesSync())!;
+    final center = legacy.getPixel(legacy.width ~/ 2, legacy.height ~/ 2);
+    expect([center.r, center.g, center.b], [255, 0, 0]);
+  });
+
+  test('custom icon for native sources gets its own resource names', () async {
+    final analysis = analyzeSample('native-compose');
+    final app = ResolvedAppConfig.resolve(analysis, const BuildOptions());
+    final android = p.join(tmp.path, 'android');
+    await NativeSourcesGenerator(config).generate(
+      projectDir: p.join('samples', 'native-compose'),
+      androidDir: android,
+      analysis: analysis,
+      app: app,
+      log: log,
+      customIcon: redIcon(),
+    );
+    final main = p.join(android, 'app', 'src', 'main');
+    final manifest = File(p.join(main, 'AndroidManifest.xml')).readAsStringSync();
+    expect(ManifestTools.applicationIcon(manifest), '@mipmap/appbuilder_ic_launcher');
+    expect(manifest, contains('android:roundIcon="@mipmap/appbuilder_ic_launcher_round"'));
+    expect(File(p.join(main, 'res', 'mipmap-mdpi', 'appbuilder_ic_launcher.png')).existsSync(), isTrue);
+    expect(File(p.join(main, 'res', 'mipmap-anydpi-v26', 'appbuilder_ic_launcher_round.xml')).existsSync(), isTrue);
+    expect(File(p.join(android, 'app', 'build.gradle.kts')).existsSync(), isTrue);
+  });
+
+  test('manifest without an icon gets a generated one', () async {
+    final project = Directory(p.join(tmp.path, 'noicon'))..createSync();
+    Directory(p.join(project.path, 'app', 'src', 'main', 'java', 'com', 'noicon')).createSync(recursive: true);
+    File(p.join(project.path, 'app', 'src', 'main', 'AndroidManifest.xml')).writeAsStringSync('''
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="NoIcon" android:theme="@android:style/Theme.Material.Light">
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
+''');
+    File(p.join(project.path, 'app', 'src', 'main', 'java', 'com', 'noicon', 'MainActivity.kt')).writeAsStringSync(
+        'package com.noicon\n\nimport android.app.Activity\n\nclass MainActivity : Activity()\n');
+    final analysis = const ProjectAnalyzer().analyze(DirectorySource(project.path));
+    expect(analysis.kind, ProjectKind.nativeSources, reason: analysis.errors.join());
+    final app = ResolvedAppConfig.resolve(analysis, const BuildOptions(packageName: 'com.noicon'));
+    final android = p.join(tmp.path, 'android');
+    await NativeSourcesGenerator(config).generate(
+      projectDir: p.join(project.path, analysis.rootPrefix),
+      androidDir: android,
+      analysis: analysis,
+      app: app,
+      log: log,
+    );
+    final main = p.join(android, 'app', 'src', 'main');
+    expect(ManifestTools.applicationIcon(File(p.join(main, 'AndroidManifest.xml')).readAsStringSync()),
+        '@mipmap/appbuilder_ic_launcher');
+    expect(File(p.join(main, 'res', 'mipmap-xhdpi', 'appbuilder_ic_launcher.png')).existsSync(), isTrue);
+  });
+
   test('java views sources: package attribute removed, exported added, no compose', () async {
     final analysis = analyzeSample('native-views');
     expect(analysis.native!.label, 'Чаевые');

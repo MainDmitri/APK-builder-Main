@@ -55,6 +55,9 @@ class ZipMemorySource implements ProjectFileSource {
   @override
   List<String> get paths => _files.keys.toList(growable: false);
 
+  /// Raw content of a file, or `null` when missing.
+  Uint8List? readBytes(String path) => _files[path]?.readBytes();
+
   @override
   String? readText(String path) {
     final f = _files[path];

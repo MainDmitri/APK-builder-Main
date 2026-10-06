@@ -24,6 +24,7 @@ class WebShellGenerator {
     required ResolvedAppConfig app,
     required WebRootInfo webInfo,
     required BuildLog log,
+    String? customIcon,
   }) async {
     final permissions = app.permissions
         .where(AppPermission.webSupported.contains)
@@ -87,7 +88,7 @@ class WebShellGenerator {
 
     await LauncherIconGenerator(log).generate(
       resDir: p.join(mainDir, 'res'),
-      sourcePath: webInfo.iconPath == null ? null : p.join(webRoot, webInfo.iconPath!),
+      sourcePath: customIcon ?? (webInfo.iconPath == null ? null : p.join(webRoot, webInfo.iconPath!)),
       themeColor: app.themeColor,
       label: app.appName,
     );

@@ -16,6 +16,21 @@ class WebRootInfo {
   final String? iconPath;
 }
 
+/// Launcher icon that the project itself provides.
+class ProjectIcon {
+  const ProjectIcon(this.path, {this.predicted = false});
+
+  /// Path inside the archive.
+  final String path;
+
+  /// Node.js projects: the icon is taken from the build output, so this is
+  /// the source file it is expected to come from (`public/…`).
+  final bool predicted;
+
+  /// PNG / JPEG / WebP / GIF / BMP (can be previewed as a picture).
+  bool get isRaster => RegExp(r'\.(png|jpe?g|webp|gif|bmp)$', caseSensitive: false).hasMatch(path);
+}
+
 /// Detects what kind of project an archive contains and how to build it.
 ///
 /// Priority (as required by the AppBuilder contract):
@@ -459,6 +474,52 @@ class ProjectAnalyzer {
       warnings.add('Ресурсы по http:// (${_preview(cleartext.toList())}) заблокированы Android — используйте https://.');
     }
     return WebRootInfo(manifest: manifest, manifestPath: manifestPath, iconPath: iconPath);
+  }
+
+  /// Icon the engine uses when no picture is chosen at build time, or null
+  /// when it will generate a letter icon.
+  static ProjectIcon? findProjectIcon(ProjectAnalysis analysis, ProjectFileSource source) {
+    final prefix = analysis.rootPrefix;
+    final paths = source.paths.map((f) => f.replaceAll('\\', '/')).toList();
+
+    ProjectIcon? web(String base, {bool predicted = false}) {
+      final files = {for (final f in paths) if (f.startsWith(base)) f.substring(base.length)};
+      final info = inspectWebRoot(files, (rel) => source.readText('$base$rel'), []);
+      return info.iconPath == null ? null : ProjectIcon('$base${info.iconPath}', predicted: predicted);
+    }
+
+    switch (analysis.kind) {
+      case ProjectKind.staticWeb:
+        return web(prefix);
+      case ProjectKind.nodeProject:
+        return web('${prefix}public/', predicted: true);
+      case ProjectKind.nativeSources:
+      case ProjectKind.nativeGradle:
+        final manifestPath = analysis.native?.manifestPath;
+        final String name;
+        if (manifestPath == null) {
+          name = 'ic_launcher';
+        } else {
+          final manifest = source.readText('$prefix$manifestPath') ?? '';
+          final tag = RegExp(r'<application\b[^>]*>', dotAll: true).firstMatch(manifest)?.group(0) ?? '';
+          final icon = RegExp(r'android:icon\s*=\s*"@(?:mipmap|drawable)/([A-Za-z0-9_]+)"').firstMatch(tag)?.group(1);
+          if (icon == null) return null;
+          name = icon;
+        }
+        const densities = ['xxxhdpi', 'xxhdpi', 'xhdpi', 'hdpi', 'mdpi', ''];
+        final candidates = paths.where((f) =>
+            f.startsWith(prefix) &&
+            RegExp('(^|/)res/(mipmap|drawable)(-[a-z0-9-]+)?/${RegExp.escape(name)}\\.(png|webp|jpe?g|xml)\$').hasMatch(f));
+        int rank(String f) {
+          if (f.endsWith('.xml')) return densities.length + 1;
+          final i = densities.indexWhere((d) => d.isNotEmpty && f.contains('-$d/'));
+          return i < 0 ? densities.length : i;
+        }
+        final sorted = candidates.toList()..sort((a, b) => rank(a).compareTo(rank(b)));
+        return sorted.isEmpty ? null : ProjectIcon(sorted.first);
+      case ProjectKind.unsupported:
+        return null;
+    }
   }
 
   // ----------------------------------------------------------------- Native

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/motion.dart';
 import 'builder/build_screen.dart';
 import 'contract/contract_screen.dart';
 import 'history/history_screen.dart';
@@ -36,7 +37,12 @@ class _HomeShellState extends State<HomeShell> {
       HistoryScreen(onOpenSettings: () => _select(4)),
       const SettingsScreen(),
     ];
-    final body = IndexedStack(index: _index, children: pages);
+    final body = IndexedStack(
+      index: _index,
+      children: [
+        for (final (i, page) in pages.indexed) _AnimatedPage(active: i == _index, child: page),
+      ],
+    );
     return LayoutBuilder(builder: (context, constraints) {
       if (constraints.maxWidth >= 840) {
         return Scaffold(
@@ -49,7 +55,7 @@ class _HomeShellState extends State<HomeShell> {
                 labelType: constraints.maxWidth >= 1200 ? null : NavigationRailLabelType.all,
                 leading: const Padding(
                   padding: EdgeInsets.symmetric(vertical: 16),
-                  child: Icon(Icons.android, size: 36),
+                  child: GradientBadge(icon: Icons.android, size: 44),
                 ),
                 destinations: [
                   for (final d in _destinations)
@@ -73,5 +79,28 @@ class _HomeShellState extends State<HomeShell> {
         ),
       );
     });
+  }
+}
+
+/// Tab switch animation: the page that becomes visible fades and slides in.
+class _AnimatedPage extends StatelessWidget {
+  const _AnimatedPage({required this.active, required this.child});
+
+  final bool active;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedOpacity(
+      opacity: active ? 1 : 0,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOut,
+      child: AnimatedSlide(
+        offset: active ? Offset.zero : const Offset(0, 0.025),
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeOutCubic,
+        child: child,
+      ),
+    );
   }
 }

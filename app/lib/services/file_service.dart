@@ -16,6 +16,9 @@ class FileService {
 
   Future<PickedFile?> pickZip() => _pick(type: FileType.custom, extensions: const ['zip']);
 
+  /// Launcher icon picture for the built app.
+  Future<PickedFile?> pickImage() => _pick(type: FileType.custom, extensions: const ['png', 'jpg', 'jpeg', 'webp']);
+
   /// Keystores have no standard MIME type, so any file is accepted and the
   /// format is checked by magic bytes afterwards.
   Future<PickedFile?> pickKeystore() => _pick(type: FileType.any);

@@ -118,6 +118,10 @@ class EngineBackend implements BuildBackend {
     final request = http.MultipartRequest('POST', _uri('/api/builds'))
       ..fields['options'] = jsonEncode(submission.options.toJson())
       ..files.add(http.MultipartFile.fromBytes('project', submission.projectZip, filename: submission.projectFileName));
+    final icon = submission.icon;
+    if (icon != null) {
+      request.files.add(http.MultipartFile.fromBytes('icon', icon, filename: submission.iconUploadName));
+    }
     final ks = submission.keystore;
     if (ks != null) {
       request
@@ -157,17 +161,15 @@ class EngineBackend implements BuildBackend {
   }
 
   @override
-  Future<DownloadedApk> downloadApk(String id) async {
+  Future<ApkSource> apkSource(String id) async {
     final status = await this.status(id, logFrom: 1 << 30);
-    final fileName = status.apkFileName ?? 'app.apk';
-    final http.Response response;
-    try {
-      response = await _client.get(_uri('/api/builds/$id/apk'), headers: _headers).timeout(const Duration(minutes: 10));
-    } on TimeoutException {
-      throw BackendException('Скачивание APK прервано по таймауту.');
-    }
-    if (response.statusCode != 200) _decode(response);
-    return DownloadedApk(response.bodyBytes, fileName);
+    if (status.state != RemoteBuildState.succeeded) throw BackendException('Сборка $id не завершилась успешно.');
+    return ApkSource(
+      url: _uri('/api/builds/$id/apk'),
+      fileName: status.apkFileName ?? 'app.apk',
+      headers: _headers,
+      size: status.apkSize,
+    );
   }
 
   @override

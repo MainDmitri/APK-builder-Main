@@ -190,6 +190,8 @@ class EngineServer {
       if (project == null) throw HttpError(400, 'Нужен ZIP-архив в поле «project».');
       final options = _parseOptions(form.fields['options']);
       final keystore = form.files['keystore'];
+      final icon = form.files['icon'];
+      if (icon != null && icon.size > 5 * 1024 * 1024) throw HttpError(400, 'Иконка больше 5 МБ.');
       KeystoreSpec? spec;
       if (options.signing == SigningMode.keystore) {
         if (keystore == null) throw HttpError(400, 'Для подписи Production Keystore загрузите файл в поле «keystore».');
@@ -201,11 +203,14 @@ class EngineServer {
         uploadedZip: project.file,
         options: options,
         uploadedKeystore: spec == null ? null : keystore!.file,
+        uploadedIcon: icon?.file,
+        iconFileName: icon?.filename,
         storePassword: spec?.storePassword,
         keyAlias: spec?.alias,
         keyPassword: spec?.keyPassword,
       );
       form.files.remove('project');
+      form.files.remove('icon');
       if (options.signing == SigningMode.keystore) form.files.remove('keystore');
       return _json(record.toJson(), status: 202);
     } finally {

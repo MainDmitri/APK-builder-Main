@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../services/backend/build_backend.dart';
 import '../../state/settings_controller.dart';
+import '../../theme/app_theme.dart';
 import '../../widgets/section_card.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -118,7 +119,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ListTile(
                         contentPadding: EdgeInsets.zero,
                         leading: Icon(_info!.ok ? Icons.check_circle : Icons.warning_amber_rounded,
-                            color: _info!.ok ? Colors.green : const Color(0xFFB26A00)),
+                            color: _info!.ok ? AppColors.success : AppColors.warning),
                         title: Text(_info!.message),
                         subtitle: _info!.details.isEmpty
                             ? null
@@ -134,9 +135,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: Icons.palette_outlined,
                 child: SegmentedButton<ThemeMode>(
                   segments: const [
-                    ButtonSegment(value: ThemeMode.system, label: Text('Авто')),
+                    ButtonSegment(value: ThemeMode.dark, label: Text('Чёрная')),
                     ButtonSegment(value: ThemeMode.light, label: Text('Светлая')),
-                    ButtonSegment(value: ThemeMode.dark, label: Text('Тёмная')),
+                    ButtonSegment(value: ThemeMode.system, label: Text('Системная')),
                   ],
                   selected: {s.themeMode},
                   onSelectionChanged: (v) => s.setThemeMode(v.first),

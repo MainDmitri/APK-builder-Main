@@ -53,6 +53,23 @@ void main() {
         startsWith('<manifest xmlns:android="http://schemas.android.com/apk/res/android">'));
   });
 
+  test('application icon is read and replaced', () {
+    const withIcon = '<manifest><application android:label="A" android:icon="@mipmap/old" android:roundIcon="@mipmap/old_r">'
+        '</application></manifest>';
+    expect(ManifestTools.applicationIcon(withIcon), '@mipmap/old');
+    final replaced = ManifestTools.setApplicationIcon(withIcon, icon: '@mipmap/new', roundIcon: '@mipmap/new_round');
+    expect(replaced, contains('android:icon="@mipmap/new"'));
+    expect(replaced, contains('android:roundIcon="@mipmap/new_round"'));
+    expect(replaced, isNot(contains('old')));
+
+    const noIcon = '<manifest>\n  <application\n      android:label="A">\n  </application>\n</manifest>';
+    expect(ManifestTools.applicationIcon(noIcon), isNull);
+    final added = ManifestTools.setApplicationIcon(noIcon, icon: '@mipmap/a', roundIcon: '@mipmap/a_round');
+    expect(ManifestTools.applicationIcon(added), '@mipmap/a');
+    expect(added, contains('android:roundIcon="@mipmap/a_round"'));
+    expect(added, contains('android:label="A"'));
+  });
+
   test('referenced resources', () {
     expect(ManifestTools.referencedResources(manifest, 'style'), {'Theme.App'});
     expect(ManifestTools.referencedResources(manifest, 'string'), {'app_name'});

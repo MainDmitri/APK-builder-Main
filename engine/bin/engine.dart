@@ -68,6 +68,7 @@ class BuildCommand extends Command<int> {
       ..addOption('orientation', allowed: ScreenOrientation.values.map((o) => o.id))
       ..addOption('permissions', help: 'Через запятую: ${AppPermission.values.map((p) => p.id).join(',')}')
       ..addOption('keystore', help: 'Production keystore (.jks/.keystore/.p12)')
+      ..addOption('icon', help: 'Картинка-иконка приложения (PNG/JPEG/WebP/SVG), заменяет иконку проекта')
       ..addOption('key-alias')
       ..addOption('store-password-env', defaultsTo: 'APPBUILDER_STORE_PASSWORD', help: 'Переменная окружения с паролем хранилища')
       ..addOption('key-password-env', defaultsTo: 'APPBUILDER_KEY_PASSWORD', help: 'Переменная окружения с паролем ключа')
@@ -122,13 +123,24 @@ class BuildCommand extends Command<int> {
       signing: keystore == null ? SigningMode.debug : SigningMode.keystore,
     );
 
+    final iconPath = a['icon'] as String?;
+    if (iconPath != null && iconPath.isNotEmpty && !File(iconPath).existsSync()) {
+      usageException('Файл иконки не найден: $iconPath');
+    }
+
     final config = EngineConfig.fromEnvironment();
     final workDir = a['work-dir'] as String? ?? (await Directory.systemTemp.createTemp('appbuilder-build')).path;
     final log = BuildLog(File(p.join(workDir, 'build.log')), echo: true);
     final resultPath = a['result-json'] as String?;
     try {
       final outcome = await BuildPipeline(config).run(
-        BuildRequest(zipPath: zip.absolute.path, workDir: workDir, options: options, keystore: keystore),
+        BuildRequest(
+          zipPath: zip.absolute.path,
+          workDir: workDir,
+          options: options,
+          keystore: keystore,
+          iconPath: iconPath == null || iconPath.isEmpty ? null : File(iconPath).absolute.path,
+        ),
         log,
       );
       var target = a['out'] as String? ?? outcome.fileName;

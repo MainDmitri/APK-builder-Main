@@ -251,6 +251,65 @@ void main() {
     });
   });
 
+  group('project icon', () {
+    ProjectIcon? iconOf(Map<String, String> files) {
+      final source = ZipMemorySource.fromBytes(zipOf(files));
+      return ProjectAnalyzer.findProjectIcon(const ProjectAnalyzer().analyze(source), source);
+    }
+
+    test('static web: icon from manifest, inside a nested folder', () {
+      final icon = iconOf({
+        'client/index.html': '<link rel="manifest" href="manifest.json">',
+        'client/manifest.json': '{"name":"A","icons":[{"src":"img/logo.png","sizes":"512x512"}]}',
+        'client/img/logo.png': 'png',
+        'server/index.js': '',
+      });
+      expect(icon!.path, 'client/img/logo.png');
+      expect(icon.isRaster, isTrue);
+      expect(icon.predicted, isFalse);
+    });
+
+    test('static web without icon → null (letter icon)', () {
+      expect(iconOf({'index.html': '<html></html>'}), isNull);
+    });
+
+    test('node project: icon expected from public/', () {
+      final icon = iconOf({
+        'package.json': '{"scripts":{"build":"vite build"},"devDependencies":{"vite":"^7.0.0"}}',
+        'index.html': '',
+        'public/icon.svg': '<svg/>',
+      });
+      expect(icon!.path, 'public/icon.svg');
+      expect(icon.isRaster, isFalse);
+      expect(icon.predicted, isTrue);
+    });
+
+    test('native sources: highest density launcher icon named in the manifest', () {
+      final icon = iconOf({
+        'app/src/main/AndroidManifest.xml':
+            '<manifest><application android:icon="@mipmap/my_icon"><activity android:name=".Main">'
+                '<intent-filter><action android:name="android.intent.action.MAIN"/>'
+                '<category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity></application></manifest>',
+        'app/src/main/java/com/example/a/Main.kt': 'package com.example.a\nclass Main',
+        'app/src/main/res/mipmap-hdpi/my_icon.png': 'png',
+        'app/src/main/res/mipmap-xxhdpi/my_icon.png': 'png',
+        'app/src/main/res/mipmap-anydpi-v26/my_icon.xml': '<adaptive-icon/>',
+      });
+      expect(icon!.path, 'app/src/main/res/mipmap-xxhdpi/my_icon.png');
+    });
+
+    test('native manifest without android:icon → null', () {
+      final icon = iconOf({
+        'app/src/main/AndroidManifest.xml':
+            '<manifest><application><activity android:name=".Main"><intent-filter>'
+                '<action android:name="android.intent.action.MAIN"/>'
+                '<category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity></application></manifest>',
+        'app/src/main/java/com/example/a/Main.kt': 'package com.example.a\nclass Main',
+      });
+      expect(icon, isNull);
+    });
+  });
+
   test('keystore files and symlinks are reported', () {
     final a = analyzeFiles({'index.html': '', 'release.jks': 'x'});
     expect(a.warnings.any((w) => w.contains('release.jks')), isTrue);

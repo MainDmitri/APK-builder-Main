@@ -26,14 +26,15 @@ class LauncherIconGenerator {
   ///
   /// [internalPrefix] namespaces the helper resources (foreground layer,
   /// background color) so they cannot clash with user resources.
-  /// [writeLauncher] / [writeRound] control `ic_launcher` and
-  /// `ic_launcher_round`.
+  /// [launcherName] is the mipmap name of the icon (`<name>` and
+  /// `<name>_round`); [writeLauncher] / [writeRound] control both files.
   Future<void> generate({
     required String resDir,
     required String? sourcePath,
     required String themeColor,
     required String label,
     String internalPrefix = '',
+    String launcherName = 'ic_launcher',
     bool writeLauncher = true,
     bool writeRound = true,
   }) async {
@@ -75,10 +76,10 @@ class LauncherIconGenerator {
         img.fill(legacy, color: background);
         _drawCentered(legacy, foregroundArt, (legacySize * (source != null ? 0.8 : 1.0)).round());
         if (writeLauncher) {
-          File(p.join(dir.path, 'ic_launcher.png')).writeAsBytesSync(img.encodePng(_mask(legacy, round: false)));
+          File(p.join(dir.path, '$launcherName.png')).writeAsBytesSync(img.encodePng(_mask(legacy, round: false)));
         }
         if (writeRound) {
-          File(p.join(dir.path, 'ic_launcher_round.png')).writeAsBytesSync(img.encodePng(_mask(legacy, round: true)));
+          File(p.join(dir.path, '${launcherName}_round.png')).writeAsBytesSync(img.encodePng(_mask(legacy, round: true)));
         }
       }
 
@@ -90,8 +91,8 @@ class LauncherIconGenerator {
     <foreground android:drawable="@mipmap/$fgName" />
 </adaptive-icon>
 ''';
-      if (writeLauncher) File(p.join(anydpi.path, 'ic_launcher.xml')).writeAsStringSync(adaptive);
-      if (writeRound) File(p.join(anydpi.path, 'ic_launcher_round.xml')).writeAsStringSync(adaptive);
+      if (writeLauncher) File(p.join(anydpi.path, '$launcherName.xml')).writeAsStringSync(adaptive);
+      if (writeRound) File(p.join(anydpi.path, '${launcherName}_round.xml')).writeAsStringSync(adaptive);
 
       final values = Directory(p.join(resDir, 'values'))..createSync(recursive: true);
       File(p.join(values.path, '${internalPrefix}launcher_colors.xml')).writeAsStringSync('''

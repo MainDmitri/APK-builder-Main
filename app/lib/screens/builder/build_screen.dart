@@ -5,8 +5,11 @@ import 'package:provider/provider.dart';
 import '../../services/backend/build_backend.dart';
 import '../../state/build_controller.dart';
 import '../../state/settings_controller.dart';
+import '../../theme/app_theme.dart';
+import '../../widgets/motion.dart';
 import '../../widgets/section_card.dart';
 import 'build_progress.dart';
+import 'icon_section.dart';
 import 'signing_section.dart';
 
 /// ZIP → analysis → parameters → signing → remote build → APK.
@@ -23,6 +26,9 @@ class BuildScreen extends StatelessWidget {
     final problems = c.readinessErrors(backend);
     final ready = problems.isEmpty && !c.submitting && !c.buildRunning && !c.analyzing;
 
+    var order = 0;
+    Widget entry(Widget child) => FadeSlideIn(delay: Duration(milliseconds: 70 * order++), child: child);
+
     return Scaffold(
       appBar: AppBar(title: const Text('Сборка APK')),
       body: Align(
@@ -30,39 +36,75 @@ class BuildScreen extends StatelessWidget {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 860),
           child: ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
             children: [
-              _BackendCard(backend: backend, settings: settings, onOpenSettings: onOpenSettings),
+              entry(const _Hero()),
               const SizedBox(height: 16),
-              const _ProjectSection(),
+              entry(_BackendCard(backend: backend, settings: settings, onOpenSettings: onOpenSettings)),
+              const SizedBox(height: 16),
+              entry(const _ProjectSection()),
               if (c.analysis?.canBuild ?? false) ...[
                 const SizedBox(height: 16),
-                const _ParametersSection(),
+                const FadeSlideIn(child: _ParametersSection()),
                 const SizedBox(height: 16),
-                SigningSection(backend: backend),
+                const FadeSlideIn(delay: Duration(milliseconds: 70), child: IconSection()),
+                const SizedBox(height: 16),
+                FadeSlideIn(delay: const Duration(milliseconds: 140), child: SigningSection(backend: backend)),
               ],
-              const SizedBox(height: 16),
-              FilledButton.icon(
+              const SizedBox(height: 20),
+              entry(GradientButton(
+                label: c.submitting ? 'Отправка проекта…' : (c.buildRunning ? 'Идёт сборка…' : 'Собрать APK'),
+                icon: Icons.rocket_launch_rounded,
+                loading: c.submitting || c.buildRunning,
                 onPressed: ready ? () => c.startBuild(backend!) : null,
-                icon: c.submitting
-                    ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.rocket_launch),
-                label: Text(c.submitting ? 'Отправка проекта…' : 'Собрать APK'),
-                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-              ),
+              )),
               if (problems.isNotEmpty && c.project != null) ...[
                 const SizedBox(height: 8),
                 MessageList(messages: problems, error: true),
               ],
               if (c.buildId != null || c.buildError != null) ...[
                 const SizedBox(height: 16),
-                const BuildProgressSection(),
+                FadeSlideIn(child: BuildProgressSection(backend: backend)),
               ],
               const SizedBox(height: 32),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Brand header of the build screen.
+class _Hero extends StatelessWidget {
+  const _Hero();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        gradient: LinearGradient(
+          colors: [AppColors.violet.withValues(alpha: 0.28), AppColors.cyan.withValues(alpha: 0.12)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        border: Border.all(color: AppColors.violet.withValues(alpha: 0.35)),
+      ),
+      child: Row(children: [
+        const GradientBadge(icon: Icons.android, size: 52),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            GradientText('AppBuilder', style: theme.textTheme.headlineMedium),
+            const SizedBox(height: 2),
+            Text('Из ZIP — подписанный APK. Сборка в облаке, скачивание и установка прямо отсюда.',
+                style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+          ]),
+        ),
+      ]),
     );
   }
 }
@@ -81,8 +123,9 @@ class _BackendCard extends StatelessWidget {
       return Card(
         color: scheme.errorContainer,
         child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           leading: Icon(Icons.cloud_off, color: scheme.onErrorContainer),
-          title: Text('Сборщик не настроен', style: TextStyle(color: scheme.onErrorContainer)),
+          title: Text('Сборщик не настроен', style: TextStyle(color: scheme.onErrorContainer, fontWeight: FontWeight.w700)),
           subtitle: Text(
             'Укажите адрес своего AppBuilder Engine или репозиторий GitHub для сборки через Actions.',
             style: TextStyle(color: scheme.onErrorContainer),
@@ -96,8 +139,9 @@ class _BackendCard extends StatelessWidget {
         : '${settings.githubOwner}/${settings.githubRepo}${settings.githubBranch.isEmpty ? '' : ' @ ${settings.githubBranch}'}';
     return Card(
       child: ListTile(
-        leading: Icon(settings.mode == BackendMode.engine ? Icons.dns : Icons.cloud_sync),
-        title: Text(settings.mode.title),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        leading: GradientBadge(icon: settings.mode == BackendMode.engine ? Icons.dns : Icons.cloud_sync, size: 36),
+        title: Text(settings.mode.title, style: const TextStyle(fontWeight: FontWeight.w700)),
         subtitle: Text(target),
         trailing: IconButton(icon: const Icon(Icons.tune), tooltip: 'Настройки', onPressed: onOpenSettings),
       ),
@@ -137,7 +181,7 @@ class _ProjectSection extends StatelessWidget {
             icon: const Icon(Icons.upload_file),
             label: Text(project == null ? 'Выбрать ZIP' : 'Выбрать другой ZIP'),
           ),
-          if (c.analyzing) const Padding(padding: EdgeInsets.only(top: 12), child: LinearProgressIndicator()),
+          if (c.analyzing) const Padding(padding: EdgeInsets.only(top: 12), child: GradientProgressBar(value: null, height: 6)),
           if (c.projectError != null) ...[
             const SizedBox(height: 12),
             MessageList(messages: [c.projectError!], error: true),
@@ -147,7 +191,7 @@ class _ProjectSection extends StatelessWidget {
             Wrap(spacing: 8, runSpacing: 8, children: [
               Chip(
                 avatar: Icon(analysis.canBuild ? Icons.check_circle : Icons.cancel,
-                    color: analysis.canBuild ? Colors.green : theme.colorScheme.error),
+                    color: analysis.canBuild ? AppColors.success : theme.colorScheme.error),
                 label: Text(analysis.kind.title),
               ),
               Chip(label: Text('Файлов: ${analysis.fileCount}')),

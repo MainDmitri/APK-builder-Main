@@ -69,12 +69,25 @@ class BuildSubmission {
     required this.projectFileName,
     required this.options,
     this.keystore,
+    this.icon,
+    this.iconFileName,
   });
 
   final Uint8List projectZip;
   final String projectFileName;
   final BuildOptions options;
   final KeystoreInput? keystore;
+
+  /// Launcher icon picture that replaces the project's own icon.
+  final Uint8List? icon;
+  final String? iconFileName;
+
+  /// `icon.png` / `icon.jpg` / `icon.webp` for the uploaded picture.
+  String get iconUploadName {
+    final name = (iconFileName ?? '').toLowerCase();
+    final ext = name.contains('.') ? name.substring(name.lastIndexOf('.')) : '';
+    return 'icon${const ['.png', '.jpg', '.jpeg', '.webp'].contains(ext) ? ext : '.png'}';
+  }
 }
 
 enum RemoteBuildState { queued, running, succeeded, failed }
@@ -141,11 +154,18 @@ class RemoteBuildSummary {
   final String? detailsUrl;
 }
 
-class DownloadedApk {
-  const DownloadedApk(this.bytes, this.fileName);
+/// Where the APK of a finished build is downloaded from.
+class ApkSource {
+  const ApkSource({required this.url, required this.fileName, this.headers = const {}, this.size});
 
-  final Uint8List bytes;
+  final Uri url;
   final String fileName;
+
+  /// Request headers (authorization of a self-hosted engine).
+  final Map<String, String> headers;
+
+  /// Expected size in bytes, when the backend knows it.
+  final int? size;
 }
 
 /// Common interface of both build backends.
@@ -168,7 +188,8 @@ abstract interface class BuildBackend {
 
   Future<RemoteBuildStatus> status(String id, {int logFrom = 0});
 
-  Future<DownloadedApk> downloadApk(String id);
+  /// Download address of the APK of a successful build.
+  Future<ApkSource> apkSource(String id);
 
   Future<List<RemoteBuildSummary>> history();
 

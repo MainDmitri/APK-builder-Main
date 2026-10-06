@@ -15,7 +15,7 @@ class SettingsController extends ChangeNotifier {
     _githubRepo = _prefs.getString(_kGithubRepo) ?? '';
     _githubBranch = _prefs.getString(_kGithubBranch) ?? '';
     _githubToken = _prefs.getString(_kGithubToken) ?? '';
-    _themeMode = ThemeMode.values.firstWhere((m) => m.name == _prefs.getString(_kTheme), orElse: () => ThemeMode.system);
+    _themeMode = ThemeMode.values.firstWhere((m) => m.name == _prefs.getString(_kTheme), orElse: () => ThemeMode.dark);
   }
 
   static Future<SettingsController> load() async => SettingsController(await SharedPreferences.getInstance());

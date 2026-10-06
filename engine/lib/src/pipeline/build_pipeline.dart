@@ -20,6 +20,7 @@ class BuildRequest {
     required this.workDir,
     this.options = const BuildOptions(),
     this.keystore,
+    this.iconPath,
   });
 
   final String zipPath;
@@ -30,6 +31,10 @@ class BuildRequest {
 
   /// Production keystore; `null` → engine debug key.
   final KeystoreSpec? keystore;
+
+  /// Launcher icon picture chosen by the user (PNG, JPEG, WebP, GIF, BMP or
+  /// SVG); replaces the project's own icon.
+  final String? iconPath;
 }
 
 class BuildOutcome {
@@ -121,6 +126,13 @@ class BuildPipeline {
         log.add('Keystore OK: ${check.storeType ?? ''} ${check.owner ?? ''}');
       }
 
+      final customIcon = request.iconPath;
+      if (customIcon != null) {
+        log.add(analysis.kind == ProjectKind.nativeGradle
+            ? 'Выбранная иконка не применяется к Gradle-проекту — иконка берётся из его ресурсов.'
+            : 'Иконка приложения: картинка, выбранная при сборке.');
+      }
+
       var app = ResolvedAppConfig.resolve(analysis, request.options);
       String unsignedApk;
       final gradle = GradleStage(config, runner: runner);
@@ -165,6 +177,7 @@ class BuildPipeline {
             app: app,
             webInfo: webInfo,
             log: log,
+            customIcon: customIcon,
           );
           onStage?.call(BuildStage.gradle);
           log.section('Gradle assembleRelease');
@@ -180,6 +193,7 @@ class BuildPipeline {
             analysis: analysis,
             app: app,
             log: log,
+            customIcon: customIcon,
           );
           onStage?.call(BuildStage.gradle);
           log.section('Gradle assembleRelease');

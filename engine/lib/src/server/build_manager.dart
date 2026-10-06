@@ -44,6 +44,9 @@ class BuildRecord {
   String get zipPath => p.join(dir, 'input.zip');
   String get keystorePath => p.join(dir, 'keystore.bin');
 
+  /// Launcher icon uploaded with the build (extension kept for the decoder).
+  String? iconPath;
+
   Map<String, Object?> toJson({int? logFrom}) => {
         'id': id,
         'state': state.name,
@@ -150,6 +153,8 @@ class BuildManager {
     required File uploadedZip,
     required BuildOptions options,
     File? uploadedKeystore,
+    File? uploadedIcon,
+    String? iconFileName,
     String? storePassword,
     String? keyAlias,
     String? keyPassword,
@@ -165,6 +170,11 @@ class BuildManager {
       log: BuildLog(File(p.join(dir, 'build.log'))),
     );
     _move(uploadedZip, record.zipPath);
+    if (uploadedIcon != null) {
+      final ext = p.extension(iconFileName ?? '').toLowerCase();
+      record.iconPath = p.join(dir, 'icon${const ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.svg'].contains(ext) ? ext : '.png'}');
+      _move(uploadedIcon, record.iconPath!);
+    }
     if (uploadedKeystore != null) {
       _move(uploadedKeystore, record.keystorePath);
       _keystores[id] = KeystoreSpec(
@@ -222,7 +232,13 @@ class BuildManager {
     final keystore = _keystores.remove(record.id);
     try {
       final outcome = await pipeline.run(
-        BuildRequest(zipPath: record.zipPath, workDir: record.dir, options: record.options, keystore: keystore),
+        BuildRequest(
+          zipPath: record.zipPath,
+          workDir: record.dir,
+          options: record.options,
+          keystore: keystore,
+          iconPath: record.iconPath,
+        ),
         record.log,
         onStage: (stage) {
           record
@@ -258,6 +274,7 @@ class BuildManager {
       await record.log.close();
       deleteQuietly(record.keystorePath);
       deleteQuietly(record.zipPath);
+      if (record.iconPath != null) deleteQuietly(record.iconPath!);
     }
   }
 

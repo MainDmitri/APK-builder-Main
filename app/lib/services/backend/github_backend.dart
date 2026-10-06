@@ -138,13 +138,16 @@ class GitHubBackend implements BuildBackend {
     }
     final id = _newId();
     final target = await _branch();
+    final icon = submission.icon;
     final request = utf8.encode(const JsonEncoder.withIndent('  ').convert({
       'id': id,
       'createdAt': DateTime.now().toUtc().toIso8601String(),
       'projectFileName': submission.projectFileName,
       'options': submission.options.toJson(),
+      if (icon != null) 'icon': submission.iconUploadName,
     }));
     final zipBlob = await _createBlob(submission.projectZip);
+    final iconBlob = icon == null ? null : await _createBlob(icon);
     final requestBlob = await _createBlob(Uint8List.fromList(request));
 
     // Commit both files atomically on top of the branch head (retry on races).
@@ -156,6 +159,8 @@ class GitHubBackend implements BuildBackend {
         'base_tree': (head['tree'] as Map)['sha'],
         'tree': [
           {'path': 'inbox/$id/project.zip', 'mode': '100644', 'type': 'blob', 'sha': zipBlob},
+          if (iconBlob != null)
+            {'path': 'inbox/$id/${submission.iconUploadName}', 'mode': '100644', 'type': 'blob', 'sha': iconBlob},
           {'path': 'inbox/$id/request.json', 'mode': '100644', 'type': 'blob', 'sha': requestBlob},
         ],
       });
@@ -291,12 +296,38 @@ class GitHubBackend implements BuildBackend {
   }
 
   @override
-  Future<DownloadedApk> downloadApk(String id) async {
+  Future<ApkSource> apkSource(String id) async {
     final release = await _release(id);
     if (release == null) throw BackendException('Релиз build-$id ещё не опубликован.');
     final apk = _asset(release, (n) => n.endsWith('.apk'));
     if (apk == null) throw BackendException('В релизе build-$id нет APK.');
-    return DownloadedApk(await _downloadAsset(apk['id'] as int), apk['name'] as String);
+    final assetUrl = Uri.parse('$_api$_repoPath/releases/assets/${apk['id']}');
+    final assetHeaders = {..._headers, 'Accept': 'application/octet-stream'};
+    final fileName = apk['name'] as String;
+    final size = apk['size'] as int?;
+
+    // The API answers with a redirect to a short-lived signed address of the
+    // file storage: the download itself then needs no token.
+    final request = http.Request('GET', assetUrl)
+      ..headers.addAll(assetHeaders)
+      ..followRedirects = false;
+    final http.StreamedResponse response;
+    try {
+      response = await _client.send(request).timeout(const Duration(seconds: 30));
+    } on TimeoutException {
+      throw BackendException('GitHub не отвечает.');
+    } on http.ClientException catch (e) {
+      throw BackendException('Нет соединения с GitHub: ${e.message}');
+    }
+    final location = response.headers['location'];
+    await response.stream.listen(null).cancel();
+    if (response.statusCode >= 300 && response.statusCode < 400 && location != null) {
+      return ApkSource(url: Uri.parse(location), fileName: fileName, size: size);
+    }
+    if (response.statusCode == 200) {
+      return ApkSource(url: assetUrl, fileName: fileName, headers: assetHeaders, size: size);
+    }
+    throw BackendException('Не удалось получить ссылку на APK (${response.statusCode}).');
   }
 
   @override

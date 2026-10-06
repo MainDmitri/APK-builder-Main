@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../services/apk_installer.dart';
 import '../../services/backend/build_backend.dart';
-import '../../services/file_service.dart';
+import '../../theme/app_theme.dart';
+import '../../widgets/motion.dart';
 import '../../widgets/section_card.dart';
+import '../builder/apk_panel.dart';
 
-/// Builds known to the current backend (engine history / GitHub releases).
+/// Builds known to the current backend (engine history / GitHub releases)
+/// with download and install of each APK.
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key, required this.onOpenSettings});
 
@@ -20,32 +22,11 @@ class HistoryScreen extends StatefulWidget {
 class _HistoryScreenState extends State<HistoryScreen> {
   Future<List<RemoteBuildSummary>>? _future;
   BuildBackend? _backend;
-  String? _busyId;
+  String? _expandedId;
 
   void _load(BuildBackend backend) {
     _backend = backend;
     _future = backend.history();
-  }
-
-  Future<void> _download(RemoteBuildSummary build, {required bool install}) async {
-    final backend = _backend;
-    if (backend == null) return;
-    setState(() => _busyId = build.id);
-    try {
-      final apk = await backend.downloadApk(build.id);
-      String? message;
-      if (install) {
-        message = await const ApkInstaller().install(apk.bytes, apk.fileName);
-      } else {
-        final saved = await const FileService().save(apk.fileName, apk.bytes, mimeType: 'application/vnd.android.package-archive');
-        message = saved == null ? 'Сохранение отменено' : 'APK сохранён: $saved';
-      }
-      if (message != null && mounted) showSnack(context, message);
-    } on BackendException catch (e) {
-      if (mounted) showSnack(context, e.message);
-    } finally {
-      if (mounted) setState(() => _busyId = null);
-    }
   }
 
   @override
@@ -70,7 +51,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
       body: FutureBuilder<List<RemoteBuildSummary>>(
         future: _future,
         builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(child: SizedBox(width: 160, child: GradientProgressBar(value: null, height: 6)));
+          }
           if (snapshot.hasError) {
             return Center(
               child: Padding(
@@ -86,53 +69,87 @@ class _HistoryScreenState extends State<HistoryScreen> {
               setState(() => _load(backend));
               await _future;
             },
-            child: ListView.separated(
-              padding: const EdgeInsets.all(8),
-              itemCount: builds.length,
-              separatorBuilder: (_, _) => const Divider(height: 1),
-              itemBuilder: (context, i) {
-                final b = builds[i];
-                final ok = b.state == RemoteBuildState.succeeded;
-                return ListTile(
-                  leading: Icon(
-                    switch (b.state) {
-                      RemoteBuildState.succeeded => Icons.check_circle,
-                      RemoteBuildState.failed => Icons.error,
-                      _ => Icons.hourglass_top,
-                    },
-                    color: ok ? Colors.green : (b.state == RemoteBuildState.failed ? Theme.of(context).colorScheme.error : null),
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 860),
+                child: ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: builds.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 12),
+                  itemBuilder: (context, i) => FadeSlideIn(
+                    delay: Duration(milliseconds: 40 * i.clamp(0, 10)),
+                    child: _BuildCard(
+                      summary: builds[i],
+                      backend: backend,
+                      expanded: _expandedId == builds[i].id,
+                      onToggle: () => setState(() => _expandedId = _expandedId == builds[i].id ? null : builds[i].id),
+                    ),
                   ),
-                  title: Text(b.title),
-                  subtitle: Text('${MaterialLocalizations.of(context).formatShortDate(b.createdAt)} '
-                      '${TimeOfDay.fromDateTime(b.createdAt).format(context)} · ${b.apkFileName ?? b.id}'),
-                  trailing: _busyId == b.id
-                      ? const SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 2))
-                      : Row(mainAxisSize: MainAxisSize.min, children: [
-                          if (b.detailsUrl != null)
-                            IconButton(
-                              tooltip: 'Открыть в GitHub',
-                              icon: const Icon(Icons.open_in_new),
-                              onPressed: () => launchUrl(Uri.parse(b.detailsUrl!), mode: LaunchMode.externalApplication),
-                            ),
-                          if (ok && const ApkInstaller().isSupported)
-                            IconButton(
-                              tooltip: 'Установить',
-                              icon: const Icon(Icons.install_mobile),
-                              onPressed: () => _download(b, install: true),
-                            ),
-                          if (ok)
-                            IconButton(
-                              tooltip: 'Сохранить APK',
-                              icon: const Icon(Icons.download),
-                              onPressed: () => _download(b, install: false),
-                            ),
-                        ]),
-                );
-              },
+                ),
+              ),
             ),
           );
         },
       ),
+    );
+  }
+}
+
+class _BuildCard extends StatelessWidget {
+  const _BuildCard({required this.summary, required this.backend, required this.expanded, required this.onToggle});
+
+  final RemoteBuildSummary summary;
+  final BuildBackend backend;
+  final bool expanded;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final ok = summary.state == RemoteBuildState.succeeded;
+    final (IconData icon, Color color) = switch (summary.state) {
+      RemoteBuildState.succeeded => (Icons.check_circle_rounded, AppColors.success),
+      RemoteBuildState.failed => (Icons.error_rounded, theme.colorScheme.error),
+      _ => (Icons.hourglass_top_rounded, AppColors.warning),
+    };
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        ListTile(
+          contentPadding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
+          onTap: ok ? onToggle : null,
+          leading: Icon(icon, color: color, size: 30),
+          title: Text(summary.title, style: const TextStyle(fontWeight: FontWeight.w700)),
+          subtitle: Text('${MaterialLocalizations.of(context).formatShortDate(summary.createdAt)} '
+              '${TimeOfDay.fromDateTime(summary.createdAt).format(context)} · ${summary.apkFileName ?? summary.id}'),
+          trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+            if (summary.detailsUrl != null)
+              IconButton(
+                tooltip: 'Открыть в GitHub',
+                icon: const Icon(Icons.open_in_new),
+                onPressed: () => launchUrl(Uri.parse(summary.detailsUrl!), mode: LaunchMode.externalApplication),
+              ),
+            if (ok)
+              AnimatedRotation(
+                turns: expanded ? 0.5 : 0,
+                duration: const Duration(milliseconds: 250),
+                child: const Icon(Icons.expand_more),
+              ),
+          ]),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: ok && expanded
+              ? Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  child: ApkPanel(backend: backend, buildId: summary.id, compact: true),
+                )
+              : const SizedBox(width: double.infinity),
+        ),
+      ]),
     );
   }
 }

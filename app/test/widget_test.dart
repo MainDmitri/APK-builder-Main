@@ -16,10 +16,19 @@ Future<void> pumpApp(WidgetTester tester, {Map<String, Object> prefs = const {},
 
 void main() {
   testWidgets('build screen asks to configure the backend', (tester) async {
-    await pumpApp(tester);
+    await pumpApp(tester, height: 4000);
     expect(find.text('Сборка APK'), findsOneWidget);
+    expect(find.text('AppBuilder'), findsOneWidget);
     expect(find.text('Сборщик не настроен'), findsOneWidget);
     expect(find.text('Выбрать ZIP'), findsOneWidget);
+    expect(find.text('Собрать APK'), findsOneWidget);
+  });
+
+  testWidgets('black theme is the default', (tester) async {
+    await pumpApp(tester);
+    final context = tester.element(find.text('Сборка APK'));
+    expect(Theme.of(context).brightness, Brightness.dark);
+    expect(Theme.of(context).scaffoldBackgroundColor, Colors.black);
   });
 
   testWidgets('configured engine is shown on the build screen', (tester) async {

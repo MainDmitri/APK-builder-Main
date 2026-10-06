@@ -26,6 +26,7 @@ class NativeSourcesGenerator {
     required ProjectAnalysis analysis,
     required ResolvedAppConfig app,
     required BuildLog log,
+    String? customIcon,
   }) async {
     final info = analysis.native!;
     final namespace = info.namespace!;
@@ -67,6 +68,29 @@ class NativeSourcesGenerator {
     final usesAppCompat = _sourcesContain(mainDir, 'AppCompatActivity');
     _healResources(manifest, resDir, app, usesAppCompat, log);
 
+    if (customIcon != null || ManifestTools.applicationIcon(manifest) == null) {
+      // A picture chosen in the app, or no icon at all in the manifest:
+      // own resource names, so nothing clashes with the project's files.
+      await LauncherIconGenerator(log).generate(
+        resDir: resDir,
+        sourcePath: customIcon,
+        themeColor: app.themeColor,
+        label: app.appName,
+        internalPrefix: 'appbuilder_',
+        launcherName: 'appbuilder_ic_launcher',
+      );
+      manifestFile.writeAsStringSync(ManifestTools.setApplicationIcon(
+        manifest,
+        icon: '@mipmap/appbuilder_ic_launcher',
+        roundIcon: '@mipmap/appbuilder_ic_launcher_round',
+      ));
+      log.add(customIcon != null
+          ? 'Иконка приложения заменена выбранной картинкой.'
+          : 'В AndroidManifest.xml не было иконки — добавлена сгенерированная.');
+      _writeBuildFile(androidDir, namespace, app, info, analysis, log);
+      return;
+    }
+
     final mipmaps = ManifestTools.referencedResources(manifest, 'mipmap');
     final needLauncher = mipmaps.contains('ic_launcher') && !_resourceExists(resDir, 'mipmap', 'ic_launcher');
     final needRound = mipmaps.contains('ic_launcher_round') && !_resourceExists(resDir, 'mipmap', 'ic_launcher_round');
@@ -81,7 +105,17 @@ class NativeSourcesGenerator {
         writeRound: needRound,
       );
     }
+    _writeBuildFile(androidDir, namespace, app, info, analysis, log);
+  }
 
+  void _writeBuildFile(
+    String androidDir,
+    String namespace,
+    ResolvedAppConfig app,
+    NativeProjectInfo info,
+    ProjectAnalysis analysis,
+    BuildLog log,
+  ) {
     final buildFile = buildGradle(
       namespace: namespace,
       app: app,

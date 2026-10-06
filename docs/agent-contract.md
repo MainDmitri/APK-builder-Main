@@ -367,7 +367,7 @@ BOM `androidx.compose:compose-bom:2024.12.01`:
 | `GET /docs/agent-contract.md` | Этот документ |
 | `POST /api/analyze` | multipart: `project` (ZIP) → JSON-анализ без сборки |
 | `POST /api/keystore/validate` | multipart: `keystore`, `storePassword`, `keyAlias`, `keyPassword` |
-| `POST /api/builds` | multipart: `project`, `options` (JSON), при Production — `keystore`, `storePassword`, `keyAlias`, `keyPassword` → `{"id": "..."}` |
+| `POST /api/builds` | multipart: `project`, `options` (JSON), необязательно `icon` (картинка-иконка, заменяет иконку проекта), при Production — `keystore`, `storePassword`, `keyAlias`, `keyPassword` → `{"id": "..."}` |
 | `GET /api/builds` | Список сборок |
 | `GET /api/builds/{id}?logFrom=N` | Статус, этап, строки лога начиная с N |
 | `GET /api/builds/{id}/apk` | Готовый подписанный APK |

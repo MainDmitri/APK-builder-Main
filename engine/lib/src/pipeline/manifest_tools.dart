@@ -54,6 +54,28 @@ abstract final class ManifestTools {
     return xml.replaceRange(open.end, open.end, lines);
   }
 
+  /// Value of `android:icon` on `<application>`, or null when it is not set.
+  static String? applicationIcon(String xml) {
+    final tag = RegExp(r'<application\b[^>]*>', dotAll: true).firstMatch(xml)?.group(0);
+    if (tag == null) return null;
+    return RegExp(r'android:icon\s*=\s*"([^"]*)"').firstMatch(tag)?.group(1);
+  }
+
+  /// Sets `android:icon` and `android:roundIcon` of `<application>`,
+  /// replacing existing values.
+  static String setApplicationIcon(String xml, {required String icon, required String roundIcon}) {
+    final match = RegExp(r'<application\b[^>]*>', dotAll: true).firstMatch(xml);
+    if (match == null) return xml;
+    var tag = match.group(0)!;
+    for (final (attr, value) in [('android:icon', icon), ('android:roundIcon', roundIcon)]) {
+      final existing = RegExp('$attr\\s*=\\s*"[^"]*"');
+      tag = existing.hasMatch(tag)
+          ? tag.replaceFirst(existing, '$attr="$value"')
+          : tag.replaceFirst(RegExp(r'<application\b'), '<application $attr="$value"');
+    }
+    return xml.replaceRange(match.start, match.end, tag);
+  }
+
   static Set<String> referencedResources(String xml, String type) =>
       RegExp('@$type/([A-Za-z0-9_.]+)').allMatches(xml).map((m) => m.group(1)!).toSet();
 
