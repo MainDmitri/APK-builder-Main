@@ -1,0 +1,16 @@
+{
+  "id": "20261006064851-ee30f3",
+  "createdAt": "2026-10-06T06:48:51.495579Z",
+  "projectFileName": "pwa-bot-runner.zip",
+  "options": {
+    "appName": "Bot Runner",
+    "packageName": "com.appbuilder.botrunner",
+    "versionName": "1.0.0",
+    "versionCode": 1,
+    "orientation": "portrait",
+    "permissions": [
+      "internet"
+    ],
+    "signing": "debug"
+  }
+}
