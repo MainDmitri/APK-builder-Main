@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:archive/archive_io.dart';
 import 'package:path/path.dart' as p;
 
 import '../build_log.dart';
@@ -229,8 +230,24 @@ class ApkSigner {
         .allMatches(text)
         .map((m) => m.group(1)!)
         .toList();
+    // With minSdk >= 24 apksigner verify skips the JAR (v1) scheme, so its
+    // presence is checked directly in the archive.
+    if (!schemes.contains('v1') && await hasJarSignature(apk)) schemes.insert(0, 'v1');
     final sha = RegExp(r'certificate SHA-256 digest:\s*([0-9a-f]+)').firstMatch(text)?.group(1);
     return SignResult(sha, schemes);
+  }
+
+  /// True when the APK carries a v1 (JAR) signature: META-INF/*.SF plus a
+  /// signature block (*.RSA / *.DSA / *.EC).
+  static Future<bool> hasJarSignature(String apkPath) async {
+    final input = InputFileStream(apkPath);
+    try {
+      final names = ZipDecoder().decodeStream(input).map((f) => f.name).toList();
+      bool has(RegExp re) => names.any(re.hasMatch);
+      return has(RegExp(r'^META-INF/[^/]+\.SF$')) && has(RegExp(r'^META-INF/[^/]+\.(RSA|DSA|EC)$'));
+    } finally {
+      await input.close();
+    }
   }
 
   Future<bool> _sign(String apksigner, String input, String output, KeystoreSpec ks, String keyPassword, BuildLog log) async {

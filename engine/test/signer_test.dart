@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:appbuilder_engine/engine.dart';
+import 'package:archive/archive.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
@@ -76,6 +77,21 @@ void main() {
     final ks = await signer.debugKeystore(log);
     expect(File(ks.path).existsSync(), isTrue);
     expect((await signer.validate(ks, log)).valid, isTrue);
+  });
+
+  test('v1 (JAR) signature detection', () async {
+    Future<String> zip(String name, List<String> entries) async {
+      final archive = Archive();
+      for (final e in entries) {
+        archive.addFile(ArchiveFile.bytes(e, [1, 2, 3]));
+      }
+      final path = p.join(tmp.path, name);
+      File(path).writeAsBytesSync(ZipEncoder().encodeBytes(archive));
+      return path;
+    }
+
+    expect(await ApkSigner.hasJarSignature(await zip('v1.apk', ['classes.dex', 'META-INF/CERT.SF', 'META-INF/CERT.RSA'])), isTrue);
+    expect(await ApkSigner.hasJarSignature(await zip('nov1.apk', ['classes.dex', 'META-INF/MANIFEST.MF'])), isFalse);
   });
 
   test('passwords never reach the log', () {
