@@ -1,0 +1,14 @@
+name: appbuilder_core
+description: Shared AppBuilder logic — ZIP project analyzer, build routing, AI agent contract and prompt generator.
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  archive: ^4.3.0
+
+dev_dependencies:
+  lints: ^6.1.0
+  test: ^1.32.0

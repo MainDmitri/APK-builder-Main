@@ -1,0 +1,21 @@
+# Dart / Flutter
+.dart_tool/
+.packages
+build/
+pubspec_overrides.yaml
+*.iml
+.idea/
+.vscode/
+.DS_Store
+
+# Engine runtime data
+engine/data/
+*.apk
+*.aab
+*.jks
+*.keystore
+!engine/test/fixtures/*.jks
+
+# Node
+node_modules/
+dist/
