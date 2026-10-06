@@ -1,0 +1,16 @@
+{
+  "id": "20261006142709-ebf678",
+  "createdAt": "2026-10-06T14:27:09.873165Z",
+  "projectFileName": "app.zip",
+  "options": {
+    "appName": "Паркур",
+    "packageName": "com.parcur.app",
+    "versionName": "1.0.0",
+    "versionCode": 1,
+    "orientation": "landscape",
+    "permissions": [
+      "internet"
+    ],
+    "signing": "debug"
+  }
+}
