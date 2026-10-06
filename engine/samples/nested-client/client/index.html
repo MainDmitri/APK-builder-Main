@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Конвертер</title>
+  <link rel="manifest" href="./manifest.json">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header>Конвертер единиц</header>
+  <main>
+    <label>Величина
+      <select id="kind"></select>
+    </label>
+    <label>Значение
+      <input id="value" type="number" inputmode="decimal" value="1">
+    </label>
+    <div class="row">
+      <select id="from"></select>
+      <button id="swap" aria-label="Поменять местами">⇄</button>
+      <select id="to"></select>
+    </div>
+    <output id="result"></output>
+  </main>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

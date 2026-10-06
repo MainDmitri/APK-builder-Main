@@ -1,0 +1,8 @@
+{
+  "appName": "Конвертер",
+  "packageName": "net.appbuilder.samples.converter",
+  "versionName": "1.0.0",
+  "versionCode": 1,
+  "orientation": "portrait",
+  "permissions": []
+}

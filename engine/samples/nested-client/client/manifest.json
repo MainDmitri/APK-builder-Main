@@ -1,0 +1,10 @@
+{
+  "name": "Конвертер",
+  "short_name": "Конвертер",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#EF6C00",
+  "background_color": "#FFFFFF",
+  "icons": []
+}

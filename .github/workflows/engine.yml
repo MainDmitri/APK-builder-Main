@@ -138,6 +138,7 @@ jobs:
             selftest-out/native-compose.apk=net.appbuilder.samples.counter
             selftest-out/native-views.apk=net.appbuilder.samples.tips
             selftest-out/gradle-project.apk=net.appbuilder.samples.deviceinfo
+            selftest-out/nested-client.apk=net.appbuilder.samples.converter
       - uses: actions/upload-artifact@v4
         if: always()
         with:

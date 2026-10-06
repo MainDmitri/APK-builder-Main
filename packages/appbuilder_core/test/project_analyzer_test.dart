@@ -188,10 +188,67 @@ void main() {
     });
   });
 
-  test('unsupported archive explains nested index.html', () {
-    final a = analyzeFiles({'docs/readme.txt': '', 'site/index.html': ''});
-    expect(a.kind, ProjectKind.unsupported);
-    expect(a.errors.single, contains('site/index.html'));
+  group('nested project root', () {
+    test('client/ next to server/ and README is built as static web', () {
+      final a = analyzeFiles({
+        'README.md': '# Fullstack',
+        'server/index.js': 'require("express")',
+        'server/package.json': '{"scripts":{"start":"node index.js"}}',
+        'client/index.html': '<link rel="manifest" href="./manifest.json"><script src="./app.js"></script>',
+        'client/app.js': '',
+        'client/manifest.json': '{"name":"Client App"}',
+      });
+      expect(a.kind, ProjectKind.staticWeb);
+      expect(a.canBuild, isTrue, reason: a.errors.join());
+      expect(a.rootPrefix, 'client/');
+      expect(a.manifest?.name, 'Client App');
+      expect(a.warnings.first, contains('client/'));
+      expect(a.warnings.first, contains('server/'));
+    });
+
+    test('Vite app in frontend/ wins over express server/', () {
+      final a = analyzeFiles({
+        'server/package.json': '{"scripts":{"start":"node index.js"}}',
+        'frontend/package.json': '{"scripts":{"build":"vite build"},"devDependencies":{"vite":"8"}}',
+        'frontend/index.html': '',
+        'frontend/public/index.html': '',
+        'appbuilder.json': '{"appName":"Root Config","packageName":"com.root.app"}',
+      });
+      expect(a.kind, ProjectKind.nodeProject);
+      expect(a.rootPrefix, 'frontend/');
+      expect(a.node!.framework, 'vite');
+      expect(a.config?.appName, 'Root Config');
+    });
+
+    test('Kotlin backend sources do not hide the web client', () {
+      final a = analyzeFiles({
+        'backend/src/main/kotlin/Main.kt': 'package app\nfun main() {}',
+        'backend/build.gradle.kts': 'plugins { kotlin("jvm") }',
+        'web/index.html': '',
+      });
+      expect(a.kind, ProjectKind.staticWeb);
+      expect(a.rootPrefix, 'web/');
+    });
+
+    test('Gradle project in android/ subfolder', () {
+      final a = analyzeFiles({
+        'README.md': '',
+        'android/settings.gradle.kts': 'include(":app")',
+        'android/app/build.gradle.kts': 'plugins { id("com.android.application") }',
+        'android/app/src/main/AndroidManifest.xml': '<manifest><application><activity android:name=".Main">'
+            '<intent-filter><category android:name="android.intent.category.LAUNCHER"/></intent-filter>'
+            '</activity></application></manifest>',
+      });
+      expect(a.kind, ProjectKind.nativeGradle);
+      expect(a.rootPrefix, 'android/');
+      expect(a.native!.appModule, 'app');
+    });
+
+    test('nothing buildable is reported with the archive contents', () {
+      final a = analyzeFiles({'README.md': '', 'data/values.csv': ''});
+      expect(a.kind, ProjectKind.unsupported);
+      expect(a.errors.single, contains('data/'));
+    });
   });
 
   test('keystore files and symlinks are reported', () {

@@ -1,0 +1,5 @@
+{
+  "name": "converter-server",
+  "private": true,
+  "scripts": { "start": "node index.js" }
+}

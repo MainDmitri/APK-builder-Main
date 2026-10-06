@@ -72,8 +72,24 @@ class ProjectAnalyzer {
         errors: ['Архив пуст.'],
       );
     }
-    final prefix = detectRootPrefix(all);
-    final ctx = _Ctx(source, prefix, all.map((p) => p.substring(prefix.length)).toSet());
+    return _analyzeAt(source, all, detectRootPrefix(all));
+  }
+
+  /// Analyzes the archive with [prefix] as the project root. [nestedNote] is
+  /// set when the root was found automatically inside a subfolder.
+  ProjectAnalysis _analyzeAt(
+    ProjectFileSource source,
+    List<String> all,
+    String prefix, {
+    String? nestedNote,
+    String? fallbackConfig,
+  }) {
+    final ctx = _Ctx(
+      source,
+      prefix,
+      all.where((p) => p.startsWith(prefix)).map((p) => p.substring(prefix.length)).toSet(),
+      nestedNote: nestedNote,
+    );
 
     if (source.symlinks.isNotEmpty) {
       ctx.warnings.add('Символические ссылки не поддерживаются и будут пропущены: ${_preview(source.symlinks)}.');
@@ -84,30 +100,114 @@ class ProjectAnalyzer {
           'подпись выбирается в настройках сборки. Не храните ключи в архиве.');
     }
 
-    if (ctx.has('appbuilder.json')) {
-      final text = ctx.read('appbuilder.json');
-      if (text != null) ctx.config = AppBuilderConfig.parse(text, ctx.errors, ctx.warnings);
+    final configText = ctx.has('appbuilder.json')
+        ? ctx.read('appbuilder.json')
+        : (fallbackConfig == null ? null : source.readText(fallbackConfig));
+    if (configText != null) ctx.config = AppBuilderConfig.parse(configText, ctx.errors, ctx.warnings);
+
+    if (ctx.has('package.json') && !_nodeFallsBackToStatic(ctx)) return _analyzeNode(ctx);
+    if (ctx.has('index.html')) return _analyzeStatic(ctx);
+
+    if (nestedNote == null) {
+      // Android project in a subfolder (e.g. android/settings.gradle).
+      final gradleRoot = _shallowestDir(ctx.files, (name) => name == 'settings.gradle' || name == 'settings.gradle.kts');
+      if (gradleRoot != null && gradleRoot.isNotEmpty) {
+        return _analyzeAt(source, all, '$prefix$gradleRoot/',
+            nestedNote: _nestedNote(ctx.files, gradleRoot, 'Android-проект (settings.gradle)'),
+            fallbackConfig: ctx.has('appbuilder.json') ? '${prefix}appbuilder.json' : null);
+      }
+      if (gradleRoot != null || ctx.files.any((f) => f.endsWith('AndroidManifest.xml') && !_isVendored(f))) {
+        return _analyzeNative(ctx);
+      }
+      // Web project in a subfolder: client/, frontend/, web/ …
+      final nested = _findNestedWebProject(ctx);
+      if (nested != null) {
+        return _analyzeAt(source, all, '$prefix$nested/',
+            nestedNote: _nestedNote(ctx.files, nested, 'веб-проект'),
+            fallbackConfig: ctx.has('appbuilder.json') ? '${prefix}appbuilder.json' : null);
+      }
     }
 
-    ProjectAnalysis result;
-    if (ctx.has('package.json') && !_nodeFallsBackToStatic(ctx)) {
-      result = _analyzeNode(ctx);
-    } else if (ctx.has('index.html')) {
-      result = _analyzeStatic(ctx);
-    } else if (_hasNativeMarkers(ctx.files)) {
-      result = _analyzeNative(ctx);
-    } else {
-      final nestedIndex = ctx.files.where((f) => f.endsWith('/index.html')).toList()
-        ..sort((a, b) => a.length.compareTo(b.length));
-      final hint = nestedIndex.isNotEmpty
-          ? 'index.html найден в «${nestedIndex.first}», но не в корне архива. '
-              'Поместите содержимое этой папки в корень ZIP.'
-          : 'Не найдено ни package.json, ни index.html в корне, ни Android-проекта '
-              '(settings.gradle, AndroidManifest.xml, .kt/.java).';
-      ctx.errors.add(hint);
-      result = ctx.build(ProjectKind.unsupported);
+    if (_hasNativeMarkers(ctx.files)) return _analyzeNative(ctx);
+
+    final top = ctx.files.map((f) => f.contains('/') ? '${f.substring(0, f.indexOf('/'))}/' : f).toSet().toList()..sort();
+    ctx.errors.add('Не найдено ни веб-проекта (package.json со скриптом build или index.html), ни Android-проекта '
+        '(settings.gradle, AndroidManifest.xml, .kt/.java). Содержимое архива: ${_preview(top)}.');
+    return ctx.build(ProjectKind.unsupported);
+  }
+
+  static const _preferredWebDirs = [
+    'client', 'frontend', 'front', 'web', 'webapp', 'www', 'app', 'site', 'ui', 'public', 'dist', 'build',
+  ];
+  static const _unlikelyWebDirs = {'server', 'backend', 'api', 'functions', 'docs', 'doc', 'test', 'tests', 'examples'};
+
+  static bool _isVendored(String path) =>
+      path.contains('node_modules/') || path.contains('/build/') || path.startsWith('build/');
+
+  /// Shallowest directory containing a file whose name matches [test].
+  static String? _shallowestDir(Set<String> files, bool Function(String name) test) {
+    String? best;
+    for (final f in files) {
+      if (_isVendored(f)) continue;
+      final slash = f.lastIndexOf('/');
+      final name = f.substring(slash + 1);
+      if (!test(name)) continue;
+      final dir = slash < 0 ? '' : f.substring(0, slash);
+      if (best == null || dir.split('/').length < best.split('/').length || (dir.isEmpty && best.isNotEmpty)) {
+        best = dir;
+      }
     }
-    return result;
+    return best;
+  }
+
+  /// Finds a subfolder with a buildable web project: package.json with a
+  /// "build" script (preferred) or index.html. Shallow folders and typical
+  /// frontend names (client, frontend, web…) win.
+  String? _findNestedWebProject(_Ctx ctx) {
+    final candidates = <String, int>{}; // dir → 0 (Node project) | 1 (static)
+    for (final f in ctx.files) {
+      if (_isVendored(f) || !f.contains('/')) continue;
+      final dir = f.substring(0, f.lastIndexOf('/'));
+      final name = f.substring(f.lastIndexOf('/') + 1);
+      if (name == 'package.json') {
+        final pkg = _readJsonMap(ctx, f, report: false);
+        final scripts = pkg?['scripts'];
+        final build = scripts is Map ? scripts['build'] : null;
+        if ((build is String && build.trim().isNotEmpty) || ctx.has('$dir/index.html')) candidates[dir] = 0;
+      } else if (name == 'index.html') {
+        candidates.putIfAbsent(dir, () => 1);
+      }
+    }
+    if (candidates.isEmpty) return null;
+    int rank(String dir) {
+      final top = dir.split('/').first.toLowerCase();
+      final preferred = _preferredWebDirs.indexOf(top);
+      if (preferred >= 0) return preferred;
+      return _unlikelyWebDirs.contains(top) ? 200 : 100;
+    }
+
+    final dirs = candidates.keys.toList()
+      ..sort((a, b) {
+        final depth = a.split('/').length.compareTo(b.split('/').length);
+        if (depth != 0) return depth;
+        final r = rank(a).compareTo(rank(b));
+        if (r != 0) return r;
+        final t = candidates[a]!.compareTo(candidates[b]!);
+        return t != 0 ? t : a.compareTo(b);
+      });
+    return dirs.first;
+  }
+
+  static String _nestedNote(Set<String> files, String dir, String what) {
+    final others = files
+        .where((f) => !f.startsWith('$dir/') && f != 'appbuilder.json')
+        .map((f) => f.contains('/') ? '${f.substring(0, f.indexOf('/'))}/' : f)
+        .where((top) => '$dir/'.startsWith(top) == false)
+        .toSet()
+        .toList()
+      ..sort();
+    return 'В корне архива нет package.json и index.html — найден $what в папке «$dir/», она собирается как корень проекта.'
+        '${others.isEmpty ? '' : ' Остальное (${_preview(others)}) в APK не попадёт.'}';
   }
 
   // ---------------------------------------------------------------- Node.js
@@ -699,11 +799,12 @@ class ProjectAnalyzer {
 }
 
 class _Ctx {
-  _Ctx(this.source, this.prefix, this.files);
+  _Ctx(this.source, this.prefix, this.files, {this.nestedNote});
 
   final ProjectFileSource source;
   final String prefix;
   final Set<String> files;
+  final String? nestedNote;
   final List<String> errors = [];
   final List<String> warnings = [];
   AppBuilderConfig? config;
@@ -718,7 +819,9 @@ class _Ctx {
   String? read(String path) => files.contains(path) ? source.readText('$prefix$path') : null;
 
   ProjectAnalysis build(ProjectKind kind) {
-    if (prefix.isNotEmpty && kind != ProjectKind.nativeSources) {
+    if (nestedNote != null) {
+      warnings.insert(0, nestedNote!);
+    } else if (prefix.isNotEmpty && kind != ProjectKind.nativeSources) {
       warnings.insert(
           0,
           'Файлы лежат во вложенной папке «$prefix» — она использована как корень. '
