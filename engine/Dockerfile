@@ -19,7 +19,7 @@ COPY engine/pubspec.yaml engine/pubspec.lock engine/
 RUN cd engine && dart pub get
 COPY packages/appbuilder_core packages/appbuilder_core
 COPY engine engine
-RUN cd engine && dart pub get --offline && dart compile exe bin/engine.dart -o /out/appbuilder-engine
+RUN mkdir -p /out && cd engine && dart pub get --offline && dart compile exe bin/engine.dart -o /out/appbuilder-engine
 
 FROM eclipse-temurin:17-jdk-noble
 
