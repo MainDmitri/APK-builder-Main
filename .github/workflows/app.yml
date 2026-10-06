@@ -97,7 +97,7 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: flutter build web --release
+      - run: flutter build web --release --no-web-resources-cdn
       - run: cd build/web && zip -qr ../../../AppBuilder-web.zip .
       - uses: actions/upload-artifact@v4
         with:

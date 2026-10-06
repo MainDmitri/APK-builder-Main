@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'build/build_screen.dart';
+import 'builder/build_screen.dart';
 import 'contract/contract_screen.dart';
 import 'history/history_screen.dart';
 import 'prompt/prompt_wizard_screen.dart';

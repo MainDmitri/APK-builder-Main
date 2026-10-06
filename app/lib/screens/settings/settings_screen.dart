@@ -134,7 +134,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: Icons.palette_outlined,
                 child: SegmentedButton<ThemeMode>(
                   segments: const [
-                    ButtonSegment(value: ThemeMode.system, label: Text('Системная')),
+                    ButtonSegment(value: ThemeMode.system, label: Text('Авто')),
                     ButtonSegment(value: ThemeMode.light, label: Text('Светлая')),
                     ButtonSegment(value: ThemeMode.dark, label: Text('Тёмная')),
                   ],
@@ -177,6 +177,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           decoration: const InputDecoration(
             labelText: 'Токен (ENGINE_TOKEN)',
             helperText: 'Значение переменной ENGINE_TOKEN, заданной при запуске сервера',
+            helperMaxLines: 3,
           ),
         ),
       ];
@@ -193,6 +194,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           decoration: const InputDecoration(
             labelText: 'Ветка (необязательно)',
             helperText: 'Пусто — ветка по умолчанию. В ней должен быть .github/workflows/inbox-build.yml',
+            helperMaxLines: 3,
           ),
         ),
         const SizedBox(height: 12),
@@ -202,6 +204,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           decoration: const InputDecoration(
             labelText: 'Personal access token',
             helperText: 'Fine-grained: Contents — Read and write, Actions — Read, Metadata — Read',
+            helperMaxLines: 3,
           ),
         ),
       ];
