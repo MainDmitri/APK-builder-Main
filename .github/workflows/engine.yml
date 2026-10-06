@@ -95,14 +95,18 @@ jobs:
           path: selftest-out/
       - name: Push image to GHCR
         if: github.event_name != 'pull_request'
+        # A package name already owned by another repository must not fail the build.
+        continue-on-error: true
         run: |
           owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          image="ghcr.io/${owner}/appbuilder-engine"
+          name=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
+          image="ghcr.io/${owner}/${name}"
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           docker tag appbuilder-engine:ci "${image}:latest"
           docker tag appbuilder-engine:ci "${image}:${GITHUB_SHA::7}"
           docker push "${image}:latest"
           docker push "${image}:${GITHUB_SHA::7}"
+          echo "Образ: ${image}:latest" >> "$GITHUB_STEP_SUMMARY"
 
   emulator:
     name: Install & launch sample APKs (API ${{ matrix.api }})

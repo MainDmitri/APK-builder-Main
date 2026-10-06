@@ -152,7 +152,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   'JDK ${Toolchain.java}, Node.js ${Toolchain.nodeMajor} LTS. Контракт v${Toolchain.contractVersion}.\n\n'
                   'Свой сервер (ПК, VPS) с Docker:\n'
                   '  docker run -d -p 8080:8080 -e ENGINE_TOKEN=<токен> -v appbuilder-data:/data '
-                  'ghcr.io/<владелец>/appbuilder-engine:latest\n'
+                  'ghcr.io/<владелец>/<репозиторий>:latest\n'
                   'или из исходников: docker compose -f engine/docker-compose.yml up -d --build\n\n'
                   'Телефон и сервер в одной Wi-Fi сети: адрес http://<IP компьютера>:8080.',
                 ),
