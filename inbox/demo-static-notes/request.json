@@ -1,0 +1,14 @@
+{
+  "id": "demo-static-notes",
+  "createdAt": "2026-10-06T03:00:00Z",
+  "projectFileName": "static-notes.zip",
+  "options": {
+    "appName": "Заметки",
+    "packageName": "net.appbuilder.samples.notes",
+    "versionName": "1.0.0",
+    "versionCode": 1,
+    "orientation": "portrait",
+    "permissions": ["storage"],
+    "signing": "debug"
+  }
+}
