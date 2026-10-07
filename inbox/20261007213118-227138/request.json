@@ -1,0 +1,17 @@
+{
+  "id": "20261007213118-227138",
+  "createdAt": "2026-10-07T21:31:18.585620Z",
+  "projectFileName": "ultraminecraft-apk.zip",
+  "options": {
+    "appName": "Minecraft HTML +",
+    "packageName": "com.mcpehtml.app",
+    "versionName": "1.2.0",
+    "versionCode": 3,
+    "orientation": "landscape",
+    "permissions": [
+      "internet",
+      "storage"
+    ],
+    "signing": "debug"
+  }
+}
