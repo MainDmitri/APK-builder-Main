@@ -1,0 +1,17 @@
+{
+  "id": "20261007194814-1736a9",
+  "createdAt": "2026-10-07T19:48:14.381094Z",
+  "projectFileName": "jaminecraft-apk.zip",
+  "options": {
+    "appName": "Minecraft HTML",
+    "packageName": "com.mcpehtml.app",
+    "versionName": "1.1.0",
+    "versionCode": 2,
+    "orientation": "landscape",
+    "permissions": [
+      "internet",
+      "storage"
+    ],
+    "signing": "debug"
+  }
+}
