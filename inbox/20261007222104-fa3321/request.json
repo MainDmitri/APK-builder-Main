@@ -1,0 +1,18 @@
+{
+  "id": "20261007222104-fa3321",
+  "createdAt": "2026-10-07T22:21:04.638943Z",
+  "projectFileName": "x2minecraft-apk.zip",
+  "options": {
+    "appName": "Minecraft HTML Q",
+    "packageName": "com.mcpehtml.app",
+    "versionName": "1.3.0",
+    "versionCode": 4,
+    "orientation": "landscape",
+    "permissions": [
+      "internet",
+      "storage"
+    ],
+    "signing": "debug"
+  },
+  "icon": "icon.jpg"
+}
