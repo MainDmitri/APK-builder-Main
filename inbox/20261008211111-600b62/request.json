@@ -1,0 +1,17 @@
+{
+  "id": "20261008211111-600b62",
+  "createdAt": "2026-10-08T21:11:11.025353Z",
+  "projectFileName": "712minecraft-apk.zip",
+  "options": {
+    "appName": "Minecraft HTML",
+    "packageName": "com.mcpehtml.app",
+    "versionName": "1.10.2",
+    "versionCode": 17,
+    "orientation": "landscape",
+    "permissions": [
+      "internet"
+    ],
+    "signing": "debug"
+  },
+  "icon": "icon.jpg"
+}
