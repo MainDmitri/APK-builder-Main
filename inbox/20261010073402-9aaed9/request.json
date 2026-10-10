@@ -1,0 +1,18 @@
+{
+  "id": "20261010073402-9aaed9",
+  "createdAt": "2026-10-10T07:34:02.071988Z",
+  "projectFileName": "server10ortbiabriaminecraft-apk.zip",
+  "options": {
+    "appName": "Minecraft HTML",
+    "packageName": "com.mcpehtml.app",
+    "versionName": "1.13.0",
+    "versionCode": 20,
+    "orientation": "landscape",
+    "permissions": [
+      "internet",
+      "storage"
+    ],
+    "signing": "debug"
+  },
+  "icon": "icon.jpg"
+}
