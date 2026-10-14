@@ -1,0 +1,19 @@
+{
+  "id": "20261014215902-65df25",
+  "createdAt": "2026-10-14T21:59:02.341061Z",
+  "projectFileName": "soundboardmain.zip",
+  "options": {
+    "appName": "Soundboard MAIN",
+    "packageName": "com.example.soundboardmain",
+    "versionName": "1.0.0",
+    "versionCode": 1,
+    "orientation": "portrait",
+    "permissions": [
+      "internet",
+      "microphone",
+      "storage",
+      "notifications"
+    ],
+    "signing": "debug"
+  }
+}
