@@ -1,0 +1,19 @@
+{
+  "id": "20261015213344-2fab86",
+  "createdAt": "2026-10-15T21:33:44.955900Z",
+  "projectFileName": "output.zip",
+  "options": {
+    "appName": "Dahua Checker",
+    "packageName": "com.dahua.checker",
+    "versionName": "2.1.0",
+    "versionCode": 3,
+    "orientation": "portrait",
+    "permissions": [
+      "internet",
+      "storage",
+      "notifications"
+    ],
+    "signing": "debug"
+  },
+  "icon": "icon.png"
+}
