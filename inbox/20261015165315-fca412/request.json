@@ -1,0 +1,17 @@
+{
+  "id": "20261015165315-fca412",
+  "createdAt": "2026-10-15T16:53:15.092764Z",
+  "projectFileName": "777BotPanel.zip",
+  "options": {
+    "appName": "Bot Panel",
+    "packageName": "com.maindmitri.botpanel",
+    "versionName": "1.1.0",
+    "versionCode": 2,
+    "orientation": "portrait",
+    "permissions": [
+      "internet",
+      "storage"
+    ],
+    "signing": "debug"
+  }
+}
