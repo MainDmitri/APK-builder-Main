@@ -1,0 +1,17 @@
+{
+  "id": "20261015161954-6fd1d1",
+  "createdAt": "2026-10-15T16:19:54.729061Z",
+  "projectFileName": "22BotPanel.zip",
+  "options": {
+    "appName": "Bot Panel",
+    "packageName": "com.maindmitri.botpanel",
+    "versionName": "1.0.0",
+    "versionCode": 1,
+    "orientation": "portrait",
+    "permissions": [
+      "internet",
+      "storage"
+    ],
+    "signing": "debug"
+  }
+}
