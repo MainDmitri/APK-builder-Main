@@ -1,0 +1,18 @@
+{
+  "id": "20261017090355-38836b",
+  "createdAt": "2026-10-17T09:03:55.190429Z",
+  "projectFileName": "main-scanner-v3.2-advanced-plugins.zip",
+  "options": {
+    "appName": "MainScan 72",
+    "packageName": "com.dahua.checker",
+    "versionName": "1.0.0",
+    "versionCode": 1,
+    "orientation": "sensor",
+    "permissions": [
+      "internet",
+      "storage",
+      "notifications"
+    ],
+    "signing": "debug"
+  }
+}
