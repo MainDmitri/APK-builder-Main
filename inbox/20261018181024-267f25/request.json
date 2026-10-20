@@ -1,0 +1,17 @@
+{
+  "id": "20261018181024-267f25",
+  "createdAt": "2026-10-18T18:10:24.514653Z",
+  "projectFileName": "dpi-bypass.zip",
+  "options": {
+    "appName": "Обход DPI",
+    "packageName": "com.dmitry.dpibypass",
+    "versionName": "1.1.0",
+    "versionCode": 2,
+    "orientation": "portrait",
+    "permissions": [
+      "internet",
+      "notifications"
+    ],
+    "signing": "debug"
+  }
+}
