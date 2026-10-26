@@ -1,0 +1,23 @@
+{
+  "id": "20261026114035-4e907a",
+  "createdAt": "2026-10-26T11:40:35.120298Z",
+  "projectFileName": "adb-scanner-v4.zip",
+  "options": {
+    "appName": "ADB Scanner",
+    "packageName": "com.maindmitri.adbscanner",
+    "versionName": "1.0.0",
+    "versionCode": 1,
+    "orientation": "portrait",
+    "permissions": [
+      "internet",
+      "storage",
+      "notifications",
+      "location",
+      "microphone",
+      "vibration",
+      "camera"
+    ],
+    "signing": "debug"
+  },
+  "icon": "icon.png"
+}
