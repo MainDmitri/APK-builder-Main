@@ -36,6 +36,22 @@ void main() {
     });
   }
 
+  test('Flutter prompt: pubspec with verified packages, no platform folders', () {
+    final prompt = generator.generate(base.copyWith(
+      appType: PromptAppType.flutter,
+      storage: StorageKind.database,
+      permissions: {AppPermission.internet, AppPermission.camera, AppPermission.notifications},
+    ));
+    expect(prompt, contains('для Android и iPhone'));
+    expect(prompt, contains('name: notes'));
+    expect(prompt, contains('sqflite: ${Toolchain.flutterPackages['sqflite']}'));
+    expect(prompt, contains('image_picker: ${Toolchain.flutterPackages['image_picker']}'));
+    expect(prompt, contains('Папки `android/`, `ios/`'));
+    // Flutter apps are native: notifications are not filtered out like in the WebView.
+    final appBuilder = jsonBlocks(prompt).whereType<Map>().firstWhere((m) => m.containsKey('packageName'));
+    expect(appBuilder['permissions'], contains('notifications'));
+  });
+
   test('node SPA uses verified versions and relative base', () {
     final prompt = generator.generate(base.copyWith(appType: PromptAppType.nodeSpa));
     final pkg = jsonBlocks(prompt).whereType<Map>().firstWhere((m) => m.containsKey('scripts'));

@@ -16,6 +16,24 @@ abstract final class Toolchain {
   static const int java = 17;
   static const int nodeMajor = 24;
 
+  /// Flutter SDK used for Flutter projects (Dart ships with it).
+  static const String flutter = '3.47.6';
+  static const String flutterDart = '3.13.5';
+
+  /// Verified pub.dev packages offered to AI models for Flutter projects.
+  static const Map<String, String> flutterPackages = {
+    'provider': '^6.1.5+1',
+    'shared_preferences': '^2.5.6',
+    'sqflite': '^2.4.5',
+    'path': '^1.9.1',
+    'path_provider': '^2.1.6',
+    'http': '^1.6.0',
+    'url_launcher': '^6.3.3',
+    'file_picker': '^13.3.0',
+    'image_picker': '^1.2.4',
+    'geolocator': '^14.1.2',
+  };
+
   /// Host the web shell serves bundled web assets from.
   static const String webAssetHost = 'appassets.androidplatform.net';
   static const String webAssetOrigin = 'https://$webAssetHost';

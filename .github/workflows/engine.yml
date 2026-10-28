@@ -108,9 +108,40 @@ jobs:
           docker push "${image}:${GITHUB_SHA::7}"
           echo "Образ: ${image}:latest" >> "$GITHUB_STEP_SUMMARY"
 
+  flutter:
+    name: Flutter sample APK (flutter build apk)
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.6'
+          channel: stable
+          cache: true
+      - name: Install librsvg
+        run: sudo apt-get update -q && sudo apt-get install -y -q librsvg2-bin fonts-dejavu-core
+      - name: Build the Flutter sample with the engine
+        working-directory: engine
+        env:
+          APPBUILDER_DATA: ${{ runner.temp }}/appbuilder-data
+        run: |
+          dart pub get
+          dart run bin/engine.dart selftest --only flutter-counter --out ../flutter-out
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: flutter-selftest
+          path: flutter-out/
+
   emulator:
     name: Install & launch sample APKs (API ${{ matrix.api }})
-    needs: docker
+    needs: [docker, flutter]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
@@ -121,7 +152,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: engine-selftest
+          pattern: '*-selftest'
+          merge-multiple: true
           path: selftest-out
       - name: Enable KVM
         run: |
@@ -143,6 +175,7 @@ jobs:
             selftest-out/native-views.apk=net.appbuilder.samples.tips
             selftest-out/gradle-project.apk=net.appbuilder.samples.deviceinfo
             selftest-out/nested-client.apk=net.appbuilder.samples.converter
+            selftest-out/flutter-counter.apk=net.appbuilder.samples.fluttercounter
       - uses: actions/upload-artifact@v4
         if: always()
         with:

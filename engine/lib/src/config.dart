@@ -10,6 +10,7 @@ class EngineConfig {
     required this.templatesDir,
     required this.androidHome,
     required this.gradleCommand,
+    this.flutterCommand = 'flutter',
     this.buildToolsDirOverride,
     this.port = 8080,
     this.token,
@@ -32,6 +33,9 @@ class EngineConfig {
 
   /// Gradle executable used when a project has no usable wrapper.
   final String gradleCommand;
+
+  /// Flutter SDK executable for Flutter projects (APPBUILDER_FLUTTER).
+  final String flutterCommand;
   final String? buildToolsDirOverride;
   final int port;
 
@@ -74,6 +78,7 @@ class EngineConfig {
       templatesDir: env['APPBUILDER_TEMPLATES'] ?? _defaultTemplatesDir(),
       androidHome: androidHome,
       gradleCommand: env['APPBUILDER_GRADLE'] ?? 'gradle',
+      flutterCommand: env['APPBUILDER_FLUTTER'] ?? 'flutter',
       buildToolsDirOverride: env['APPBUILDER_BUILD_TOOLS'],
       port: port ?? int.tryParse(env['PORT'] ?? '') ?? 8080,
       token: (env['ENGINE_TOKEN']?.isNotEmpty ?? false) ? env['ENGINE_TOKEN'] : null,

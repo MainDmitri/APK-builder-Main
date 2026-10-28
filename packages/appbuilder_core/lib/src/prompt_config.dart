@@ -5,7 +5,8 @@ enum PromptAppType {
   webService('web-service', 'Веб-сервис / PWA-клиент', 'Клиент для сайта, дашборд, клиент REST API'),
   game('game', '2D Canvas / WebGL игра', 'Phaser, Three.js, чистый Canvas'),
   nativeAndroid('native', 'Нативный Android-проект', 'Камера, датчики, сервисы на Kotlin'),
-  nodeSpa('node-spa', 'Node.js SPA', 'React или Vue + Vite + Tailwind');
+  nodeSpa('node-spa', 'Node.js SPA', 'React или Vue + Vite + Tailwind'),
+  flutter('flutter', 'Flutter: Android + iPhone', 'Нативное приложение на Dart, один код для обеих платформ');
 
   const PromptAppType(this.id, this.title, this.examples);
 
@@ -14,6 +15,10 @@ enum PromptAppType {
   final String examples;
 
   bool get isNative => this == PromptAppType.nativeAndroid;
+  bool get isFlutter => this == PromptAppType.flutter;
+
+  /// HTML/JS projects running in the WebView shell.
+  bool get usesWebView => !isNative && !isFlutter;
 }
 
 enum GameEngine {

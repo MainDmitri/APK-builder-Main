@@ -5,6 +5,7 @@ export 'src/build_log.dart';
 export 'src/config.dart';
 export 'src/doctor.dart';
 export 'src/pipeline/build_pipeline.dart';
+export 'src/pipeline/flutter_stage.dart';
 export 'src/pipeline/gradle_stage.dart';
 export 'src/pipeline/icons.dart';
 export 'src/pipeline/ios_shell.dart';

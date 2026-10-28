@@ -6,6 +6,7 @@ enum ProjectKind {
   staticWeb('static-web', 'Статический веб (HTML / CSS / JS)'),
   nativeGradle('native-gradle', 'Нативный Android: Gradle-проект'),
   nativeSources('native-sources', 'Нативный Android: исходники Java/Kotlin'),
+  flutterProject('flutter', 'Flutter (Dart): Android и iPhone'),
   unsupported('unsupported', 'Не распознано');
 
   const ProjectKind(this.id, this.title);
@@ -15,6 +16,9 @@ enum ProjectKind {
 
   bool get isWeb => this == nodeProject || this == staticWeb;
   bool get isNative => this == nativeGradle || this == nativeSources;
+
+  /// Projects that can also be built for iPhone (.ipa).
+  bool get supportsIos => isWeb || this == flutterProject;
 }
 
 enum ScreenOrientation {

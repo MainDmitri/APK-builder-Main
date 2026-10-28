@@ -251,6 +251,87 @@ void main() {
     });
   });
 
+  group('flutter', () {
+    const pubspec = '''
+name: shop_list
+description: Список покупок
+version: 2.1.0+7
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  shared_preferences: ^2.5.6
+  provider: ^6.1.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+''';
+
+    test('pubspec.yaml with the Flutter SDK → Flutter project (beats android/settings.gradle)', () {
+      final a = analyzeFiles({
+        'pubspec.yaml': pubspec,
+        'lib/main.dart': 'void main() {}',
+        'android/settings.gradle.kts': '',
+        'android/app/build.gradle.kts': 'android { defaultConfig { applicationId = "com.shop.list" } }',
+        'android/app/src/main/AndroidManifest.xml': '<manifest><application android:label="Покупки"></application></manifest>',
+        'android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png': 'png',
+      });
+      expect(a.kind, ProjectKind.flutterProject);
+      expect(a.canBuild, isTrue, reason: a.errors.join());
+      expect(a.kind.supportsIos, isTrue);
+      final f = a.flutter!;
+      expect(f.packageName, 'shop_list');
+      expect((f.versionName, f.versionCode), ('2.1.0', 7));
+      expect(f.hasAndroid, isTrue);
+      expect(f.hasIos, isFalse);
+      expect(f.applicationId, 'com.shop.list');
+      expect(f.dependencies, ['shared_preferences', 'provider']);
+      expect(a.plan.stages, contains(BuildStage.flutterBuild));
+
+      final app = ResolvedAppConfig.resolve(a, const BuildOptions());
+      expect(app.appName, 'Покупки');
+      expect(app.packageName, 'com.shop.list');
+      expect((app.versionName, app.versionCode), ('2.1.0', 7));
+    });
+
+    test('only lib/ and pubspec.yaml: name from pubspec, platforms generated later', () {
+      final a = analyzeFiles({'pubspec.yaml': pubspec, 'lib/main.dart': 'void main() {}'});
+      expect(a.kind, ProjectKind.flutterProject);
+      expect(a.flutter!.hasAndroid, isFalse);
+      final app = ResolvedAppConfig.resolve(a, const BuildOptions());
+      expect(app.appName, 'Shop List');
+      expect(app.packageName, 'com.appbuilder.shoplist');
+    });
+
+    test('nested Flutter project and missing main.dart', () {
+      final nested = analyzeFiles({
+        'README.md': '',
+        'mobile/pubspec.yaml': pubspec,
+        'mobile/lib/main.dart': '',
+        'mobile/android/settings.gradle': '',
+        'server/index.js': '',
+      });
+      expect(nested.kind, ProjectKind.flutterProject);
+      expect(nested.rootPrefix, 'mobile/');
+
+      final broken = analyzeFiles({'pubspec.yaml': pubspec, 'lib/app.dart': ''});
+      expect(broken.canBuild, isFalse);
+      expect(broken.errors.single, contains('lib/main.dart'));
+    });
+
+    test('a plain Dart package is not a Flutter app', () {
+      expect(ProjectAnalyzer.isFlutterPubspec('name: tool\ndependencies:\n  args: ^2.0.0\n'), isFalse);
+      expect(ProjectAnalyzer.pubspecVersion('version: 1.0.0'), ('1.0.0', null));
+    });
+  });
+
   group('project icon', () {
     ProjectIcon? iconOf(Map<String, String> files) {
       final source = ZipMemorySource.fromBytes(zipOf(files));

@@ -1,15 +1,17 @@
 name: iOS shell
 
-# Checks the iOS WebView shell end to end: Xcode projects are generated on
-# Linux (npm builds included), compiled into unsigned .ipa files on macOS and
-# one of them is launched in the iOS Simulator. Runs only when the iOS shell
-# changes: macOS minutes of private repositories count ten times.
+# Checks iOS builds end to end: Xcode projects (WebView shell, npm build
+# included) and Flutter projects are prepared on Linux, compiled into unsigned
+# .ipa files on macOS and launched in the iOS Simulator. Runs only when the
+# iOS parts change: macOS minutes of private repositories count ten times.
 
 on:
   push:
     paths:
       - 'engine/templates/ios_shell/**'
       - 'engine/lib/src/pipeline/ios_shell.dart'
+      - 'engine/lib/src/pipeline/flutter_stage.dart'
+      - 'engine/samples/flutter-counter/**'
       - '.github/workflows/ios.yml'
       - '.github/scripts/ios-*.sh'
   workflow_dispatch:
@@ -30,6 +32,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.6'
+          channel: stable
+          cache: true
       - name: Install librsvg, corepack
         run: |
           sudo apt-get update -q && sudo apt-get install -y -q librsvg2-bin fonts-dejavu-core
@@ -41,7 +48,7 @@ jobs:
           APPBUILDER_DATA: ${{ runner.temp }}/appbuilder-data
         run: |
           dart pub get
-          for sample in static-notes vite-react; do
+          for sample in static-notes vite-react flutter-counter; do
             (cd "samples/$sample" && zip -qr "$RUNNER_TEMP/$sample.zip" .)
             dart run bin/engine.dart ios-project "$RUNNER_TEMP/$sample.zip" \
               --out "$RUNNER_TEMP/ios/$sample" --result-json "$RUNNER_TEMP/ios/$sample.json"
@@ -62,13 +69,23 @@ jobs:
         with:
           name: ios-projects
           path: ios
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.6'
+          channel: stable
+          cache: true
       - name: Build unsigned IPAs
         run: |
-          for sample in static-notes vite-react; do
+          for sample in static-notes vite-react flutter-counter; do
             name=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["ipaFileName"])' "ios/$sample.json")
             bash .github/scripts/ios-build.sh "ios/$sample" out "$name"
-            unzip -l "out/$name" | grep -q "Payload/App.app/App$" || { echo "::error::$name has no executable"; exit 1; }
-            unzip -l "out/$name" | grep -q "Payload/App.app/www/index.html" || { echo "::error::$name has no www/index.html"; exit 1; }
+            if [ "$sample" = flutter-counter ]; then
+              unzip -l "out/$name" | grep -q "Payload/Runner.app/Frameworks/App.framework/App$" \
+                || { echo "::error::$name has no compiled Dart code"; exit 1; }
+            else
+              unzip -l "out/$name" | grep -q "Payload/App.app/App$" || { echo "::error::$name has no executable"; exit 1; }
+              unzip -l "out/$name" | grep -q "Payload/App.app/www/index.html" || { echo "::error::$name has no www/index.html"; exit 1; }
+            fi
           done
       - name: Launch in the iOS Simulator and check the rendered pages
         run: |
@@ -79,6 +96,9 @@ jobs:
           # React + Vite: the green "Добавить" button rendered by JavaScript modules.
           bash .github/scripts/ios-build.sh ios/vite-react sim/vite-react - simulator
           bash .github/scripts/ios-simulator-test.sh sim/vite-react/App.app "$(bundle vite-react)" out green 0.5 0.08 1.0 0.2
+          # Flutter: the orange app bar drawn by the Flutter engine (Dart compiled, plugins linked).
+          bash .github/scripts/ios-build.sh ios/flutter-counter sim/flutter-counter - simulator
+          bash .github/scripts/ios-simulator-test.sh sim/flutter-counter/Runner.app "$(bundle flutter-counter)" out red 0.1 0.06 0.9 0.12
       - uses: actions/upload-artifact@v4
         if: always()
         with:

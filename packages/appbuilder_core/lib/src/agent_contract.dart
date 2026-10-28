@@ -40,6 +40,7 @@ String buildAgentContract() {
 
 | Приоритет | Признак в корне архива | Профиль |
 |---|---|---|
+| 0 | `pubspec.yaml` с `sdk: flutter` | **D** — Flutter: APK и (по желанию) .ipa для iPhone |
 | 1 | `package.json` со скриптом `build` | **B** — Node.js SPA (двухэтапная сборка) |
 | 2 | `index.html` | **A** — статический веб (HTML/CSS/JS) |
 | 3 | `settings.gradle(.kts)`, `AndroidManifest.xml`, `*.kt`, `*.java` | **C** — нативный Android |
@@ -62,6 +63,7 @@ String buildAgentContract() {
 | minSdk | ${Toolchain.minSdk} (Android 7.0) |
 | Build-Tools | ${Toolchain.buildTools} (aapt2, zipalign, apksigner) |
 | Подпись | APK Signature Scheme v1 + v2 + v3 |
+| Flutter (профиль D) | ${Toolchain.flutter} stable, Dart ${Toolchain.flutterDart} |
 
 Во время сборки есть доступ к npm registry, Google Maven и Maven Central.
 Лимиты: установка зависимостей — 15 мин, `npm run build` — 15 мин, Gradle — 30 мин.
@@ -344,6 +346,32 @@ $composeDeps
 - Собирается `assembleRelease`, берётся APK модуля приложения из `build/outputs/apk/release/`.
 - Название, пакет и версия берутся из самого проекта.
 
+### 6.3 Профиль D — Flutter (Android и iPhone)
+
+Один код на Dart собирается в APK (`flutter build apk --release`) и, по желанию пользователя, в неподписанный
+`.ipa` для iPhone (`flutter build ios --release --no-codesign` на macOS в GitHub Actions).
+
+```
+pubspec.yaml            ← обязателен: name, version, dependencies с flutter: sdk: flutter
+lib/main.dart           ← обязателен
+lib/…                   ← экраны, модели, сервисы
+assets/…                ← если есть, перечислены в pubspec.yaml (flutter: assets:)
+appbuilder.json         ← рекомендуется
+analysis_options.yaml   ← необязательно
+```
+
+- Папки `android/` и `ios/` **не нужны**: недостающие создаёт `flutter create`. Если они есть, используются
+  как есть; движок прописывает в них `applicationId` / bundle id, название, версию, разрешения и иконку.
+- Пакет и название — из `appbuilder.json`; версия — `versionName`/`versionCode` (записываются в `version:` pubspec).
+- `name` в pubspec.yaml — строчные латинские буквы, цифры и `_`; импорты своих файлов — `package:<name>/…`.
+- Только пакеты pub.dev, поддерживающие Android **и** iOS, с существующими версиями. Проверенные:
+${Toolchain.flutterPackages.entries.map((e) => '  `${e.key}: ${e.value}`').join(', ')}.
+- Разрешения перечисляются в `appbuilder.json` — движок добавит их в AndroidManifest.xml и описания
+  (`NSCameraUsageDescription` и др.) в Info.plist; без описаний iOS закрывает приложение при запросе доступа.
+- Без `pubspec.lock`, `build/`, `.dart_tool/`, Firebase-файлов (если Firebase не нужен) и нативного кода
+  в `android/`/`ios/`, написанного вручную.
+- Иконку генерирует движок (буква на `theme_color`) или пользователь выбирает картинку в AppBuilder.
+
 ## 7. Подпись и выдача
 
 1. `gradle assembleRelease` → неподписанный release-APK.
@@ -364,6 +392,7 @@ $composeDeps
 - [ ] Профиль B: `package.json` со `scripts.build`; относительная база (`base: './'`); hash-роутер; сборка даёт `index.html`.
 - [ ] Профиль C1: нет Gradle-файлов; `AndroidManifest.xml` без `package`, с `.MainActivity` + `exported="true"` + LAUNCHER;
       пакет исходников = `packageName`; `res/values/strings.xml` содержит `app_name`; тема существует.
+- [ ] Профиль D: `pubspec.yaml` с `sdk: flutter` и `lib/main.dart`; только пакеты для Android и iOS; разрешения в `appbuilder.json`.
 - [ ] Используются только API, перечисленные в контракте; данные сохраняются реально (localStorage / IndexedDB / SQLite / SharedPreferences).
 - [ ] Каждый файл приведён полностью, без «…» и заглушек.
 

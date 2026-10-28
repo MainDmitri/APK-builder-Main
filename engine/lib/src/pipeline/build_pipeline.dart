@@ -8,6 +8,7 @@ import '../build_log.dart';
 import '../config.dart';
 import '../process_runner.dart';
 import '../workspace.dart';
+import 'flutter_stage.dart';
 import 'gradle_stage.dart';
 import 'ios_shell.dart';
 import 'native_sources.dart';
@@ -229,6 +230,24 @@ class BuildPipeline {
             appModule: info.appModule,
           );
 
+        case ProjectKind.flutterProject:
+          _validate(app);
+          final flutter = FlutterStage(config, runner: runner);
+          onStage?.call(BuildStage.flutterPrepare);
+          log.section('Подготовка Flutter-проекта');
+          await flutter.ensureAvailable(log);
+          await flutter.prepare(
+            projectDir: projectDir,
+            analysis: analysis,
+            app: app,
+            platforms: const {'android'},
+            customIcon: customIcon,
+            log: log,
+          );
+          onStage?.call(BuildStage.flutterBuild);
+          log.section('flutter build apk --release');
+          unsignedApk = await flutter.buildApk(projectDir, log);
+
         case ProjectKind.unsupported:
           throw BuildFailure('Тип проекта не распознан.');
       }
@@ -289,11 +308,28 @@ class BuildPipeline {
     try {
       var analysis = await _extractAndAnalyze(request.zipPath, srcDir, log);
       if (!analysis.canBuild) _failOnErrors(analysis, log);
-      if (!analysis.kind.isWeb) {
-        throw BuildFailure('Для iPhone собираются только веб-проекты (HTML/JS, React, Vue, Vite…): '
+      if (!analysis.kind.supportsIos) {
+        throw BuildFailure('Для iPhone собираются веб-проекты (HTML/JS, React, Vue, Vite…) и Flutter: '
             'код Kotlin/Java работает только на Android.');
       }
       final projectDir = p.normalize(p.join(srcDir, analysis.rootPrefix));
+      if (analysis.kind == ProjectKind.flutterProject) {
+        final app = ResolvedAppConfig.resolve(analysis, request.options);
+        _validate(app);
+        log.section('Подготовка Flutter-проекта для iOS');
+        copyDirectory(projectDir, request.projectDir);
+        final flutter = FlutterStage(config, runner: runner);
+        await flutter.ensureAvailable(log);
+        await flutter.prepare(
+          projectDir: request.projectDir,
+          analysis: analysis,
+          app: app,
+          platforms: const {'ios'},
+          customIcon: request.iconPath,
+          log: log,
+        );
+        return _iosOutcome(app);
+      }
       var webRoot = projectDir;
       if (analysis.kind == ProjectKind.nodeProject) {
         webRoot = await NodeStage(config, runner: runner).run(projectDir, analysis.node!, log);
@@ -324,16 +360,19 @@ class BuildPipeline {
         log: log,
         customIcon: request.iconPath,
       );
-      final bundleId = IosShellGenerator.bundleId(app.packageName);
-      final baseName = latinFileBase(app.appName, bundleId);
-      return IosProjectOutcome(
-        app: app,
-        bundleId: bundleId,
-        ipaFileName: '${_safeFileName(baseName)}-${_safeFileName(app.versionName)}.ipa',
-      );
+      return _iosOutcome(app);
     } finally {
       if (Platform.environment['APPBUILDER_KEEP_WORKDIR'] != '1') deleteQuietly(srcDir);
     }
+  }
+
+  static IosProjectOutcome _iosOutcome(ResolvedAppConfig app) {
+    final bundleId = IosShellGenerator.bundleId(app.packageName);
+    return IosProjectOutcome(
+      app: app,
+      bundleId: bundleId,
+      ipaFileName: '${_safeFileName(latinFileBase(app.appName, bundleId))}-${_safeFileName(app.versionName)}.ipa',
+    );
   }
 
   Future<ProjectAnalysis> _extractAndAnalyze(String zipPath, String srcDir, BuildLog log) async {

@@ -30,10 +30,15 @@ class PromptGenerator {
 
     b.writeln('# Задача');
     b.writeln();
-    b.writeln('Ты — senior-разработчик мобильных приложений. Создай полностью рабочее Android-приложение '
-        '«${c.appName}». Твой ответ будет упакован в ZIP и собран в APK автоматическим сборщиком '
-        '**AppBuilder Engine** (контракт v${Toolchain.contractVersion}) без участия человека, поэтому '
-        'строго соблюдай формат ниже: любое отступление ломает сборку.');
+    b.writeln(c.appType.isFlutter
+        ? 'Ты — senior-разработчик Flutter. Создай полностью рабочее приложение «${c.appName}» на Flutter '
+            '${Toolchain.flutter} (Dart ${Toolchain.flutterDart}) для Android и iPhone. Твой ответ будет упакован в ZIP и '
+            'собран в APK и .ipa автоматическим сборщиком **AppBuilder Engine** (контракт v${Toolchain.contractVersion}) '
+            'без участия человека, поэтому строго соблюдай формат ниже: любое отступление ломает сборку.'
+        : 'Ты — senior-разработчик мобильных приложений. Создай полностью рабочее Android-приложение '
+            '«${c.appName}». Твой ответ будет упакован в ZIP и собран в APK автоматическим сборщиком '
+            '**AppBuilder Engine** (контракт v${Toolchain.contractVersion}) без участия человека, поэтому '
+            'строго соблюдай формат ниже: любое отступление ломает сборку.');
     b.writeln();
     b.writeln('## Что должно делать приложение');
     b.writeln();
@@ -45,7 +50,7 @@ class PromptGenerator {
     b.writeln('| Параметр | Значение |');
     b.writeln('|---|---|');
     b.writeln('| Название | ${c.appName} |');
-    b.writeln('| Пакет (applicationId) | `${c.packageName}` |');
+    b.writeln('| Пакет (applicationId${c.appType.isFlutter ? ' / bundle id' : ''}) | `${c.packageName}` |');
     b.writeln('| Версия | ${c.versionName} (versionCode 1) |');
     b.writeln('| Ориентация экрана | ${c.orientation.title} (`${c.orientation.id}`) |');
     b.writeln('| Разрешения | ${_permissionList(c)} |');
@@ -84,6 +89,8 @@ class PromptGenerator {
         }
       case PromptAppType.nativeAndroid:
         _native(b, c);
+      case PromptAppType.flutter:
+        _flutter(b, c);
     }
 
     _forbidden(b, c);
@@ -105,6 +112,7 @@ class PromptGenerator {
 
   String _profileName(PromptConfig c) {
     if (c.appType == PromptAppType.nativeAndroid) return 'C1 — нативные исходники Kotlin (без Gradle-файлов)';
+    if (c.appType.isFlutter) return 'D — Flutter (pubspec.yaml + lib/), APK и .ipa';
     if (c.usesNode) return 'B — Node.js SPA (npm install → npm run build → WebView)';
     return 'A — статический веб (HTML/CSS/JS в WebView)';
   }
@@ -117,16 +125,16 @@ class PromptGenerator {
   Set<AppPermission> _effectivePermissions(PromptConfig c) {
     final set = {...c.permissions};
     if (c.needsRemoteUrl) set.add(AppPermission.internet);
-    if (!c.appType.isNative) set.retainAll(AppPermission.webSupported);
+    if (c.appType.usesWebView) set.retainAll(AppPermission.webSupported);
     return set;
   }
 
-  String _storageTitle(PromptConfig c) => switch ((c.storage, c.appType.isNative)) {
-        (StorageKind.none, _) => 'не требуется',
-        (StorageKind.keyValue, false) => 'localStorage (JSON)',
-        (StorageKind.keyValue, true) => 'SharedPreferences',
-        (StorageKind.database, false) => 'IndexedDB',
-        (StorageKind.database, true) => 'SQLite (SQLiteOpenHelper)',
+  String _storageTitle(PromptConfig c) => switch (c.storage) {
+        StorageKind.none => 'не требуется',
+        StorageKind.keyValue =>
+          c.appType.isFlutter ? 'shared_preferences' : (c.appType.isNative ? 'SharedPreferences' : 'localStorage (JSON)'),
+        StorageKind.database =>
+          c.appType.isFlutter ? 'SQLite (sqflite)' : (c.appType.isNative ? 'SQLite (SQLiteOpenHelper)' : 'IndexedDB'),
       };
 
   String _slug(PromptConfig c) {
@@ -654,6 +662,118 @@ ${permissionXml.isEmpty ? '' : '$permissionXml\n'}
     _bullets(b, runtime);
   }
 
+  /// Dart package name for pubspec.yaml (`com.example.shop_list` → `shop_list`).
+  String _dartName(PromptConfig c) {
+    final last = c.packageName.split('.').last.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_]'), '_');
+    return RegExp(r'^[a-z]').hasMatch(last) ? last : 'app_$last';
+  }
+
+  void _flutter(StringBuffer b, PromptConfig c) {
+    final name = _dartName(c);
+    final perms = _effectivePermissions(c);
+    final packages = {
+      'provider': Toolchain.flutterPackages['provider']!,
+      if (c.storage == StorageKind.keyValue) 'shared_preferences': Toolchain.flutterPackages['shared_preferences']!,
+      if (c.storage == StorageKind.database) ...{
+        'sqflite': Toolchain.flutterPackages['sqflite']!,
+        'path': Toolchain.flutterPackages['path']!,
+      },
+      if (perms.contains(AppPermission.camera)) 'image_picker': Toolchain.flutterPackages['image_picker']!,
+      if (perms.contains(AppPermission.location)) 'geolocator': Toolchain.flutterPackages['geolocator']!,
+      if (perms.contains(AppPermission.internet)) 'http': Toolchain.flutterPackages['http']!,
+    };
+
+    b.writeln('## Структура ZIP-архива (строго, файлы в корне архива)');
+    b.writeln();
+    _codeBlock(b, '', [
+      'appbuilder.json',
+      'pubspec.yaml',
+      'analysis_options.yaml',
+      'lib/main.dart                 ← MaterialApp, тема, провайдеры',
+      'lib/models/…                  ← модели данных',
+      if (c.storage != StorageKind.none) 'lib/data/…                    ← хранение данных (репозиторий)',
+      'lib/state/…                   ← ChangeNotifier-контроллеры (provider)',
+      'lib/screens/…                 ← экраны',
+      'lib/widgets/…                 ← переиспользуемые виджеты',
+    ].join('\n'));
+    b.writeln('**Не создавай** папки `android/`, `ios/`, `web/`, файлы `pubspec.lock` и иконки: сборщик сам выполнит '
+        '`flutter create`, пропишет пакет `${c.packageName}`, название, версию, разрешения и иконку.');
+    b.writeln();
+    b.writeln('## appbuilder.json (положи в корень)');
+    b.writeln();
+    _codeBlock(b, 'json', _json.convert(_appBuilderJson(c, web: {'themeColor': c.themeColor, 'backgroundColor': '#FFFFFF'})));
+    b.writeln('## pubspec.yaml (основа)');
+    b.writeln();
+    _codeBlock(b, 'yaml', [
+      'name: $name',
+      'description: ${c.appName}',
+      "publish_to: 'none'",
+      'version: ${c.versionName}+1',
+      '',
+      'environment:',
+      '  sdk: ^${Toolchain.flutterDart}',
+      '',
+      'dependencies:',
+      '  flutter:',
+      '    sdk: flutter',
+      for (final e in packages.entries) '  ${e.key}: ${e.value}',
+      '',
+      'dev_dependencies:',
+      '  flutter_test:',
+      '    sdk: flutter',
+      '  flutter_lints: ^6.0.0',
+      '',
+      'flutter:',
+      '  uses-material-design: true',
+    ].join('\n'));
+    b.writeln('Другие пакеты добавляй, только если они нужны, поддерживают Android **и** iOS и ты уверен, что '
+        'указанная версия существует на pub.dev. Проверенные версии: '
+        '${Toolchain.flutterPackages.entries.map((e) => '`${e.key}: ${e.value}`').join(', ')}.');
+    b.writeln();
+    b.writeln('`analysis_options.yaml`: `include: package:flutter_lints/flutter.yaml`.');
+    b.writeln();
+
+    b.writeln('## Технические правила');
+    b.writeln();
+    _bullets(b, [
+      'Flutter ${Toolchain.flutter}, Dart ${Toolchain.flutterDart}, null safety, Material 3 (`useMaterial3: true`), '
+          '`ColorScheme.fromSeed(seedColor: Color(0xFF${c.themeColor.substring(1)}))`, светлая и тёмная тема (`themeMode: ThemeMode.system`).',
+      'Состояние — `provider` (`ChangeNotifierProvider` / `MultiProvider`, `context.watch` / `context.read`).',
+      'Импорты своих файлов — `package:$name/…`. Код без устаревших API (без `WillPopScope`, `withOpacity` → `withValues`).',
+      'Интерфейс адаптивный: `SafeArea`, прокрутка длинных экранов, без фиксированных размеров под один телефон.',
+      'Работает на Android и iOS: без `dart:html`, без пакетов только для одной платформы; файлы — через `path_provider`.',
+      'Язык интерфейса: ${c.uiLanguage.title}. Тексты — прямо в виджетах (без генерации l10n).',
+      if (c.orientation != ScreenOrientation.sensor)
+        'Ориентацию сборщик задаёт в манифестах; дополнительно вызови `SystemChrome.setPreferredOrientations` в `main()`.',
+    ]);
+
+    b.writeln('## Хранение данных');
+    b.writeln();
+    _bullets(b, switch (c.storage) {
+      StorageKind.none => const ['Постоянное хранение не требуется.'],
+      StorageKind.keyValue => const [
+          '`shared_preferences` (`SharedPreferences.getInstance()` / `SharedPreferencesAsync`), сложные структуры — JSON (`dart:convert`).',
+          'Сохраняй сразу при изменении, загружай при старте до показа данных (индикатор загрузки, пока читаются данные).',
+        ],
+      StorageKind.database => [
+          'SQLite через `sqflite`: база `${_slug(c)}.db` в `getDatabasesPath()` (`path.join`), версия 1, `onCreate`/`onUpgrade`.',
+          'Репозиторий с реальными CRUD-операциями, параметризованные запросы (`whereArgs`).',
+        ],
+    });
+
+    final runtime = <String>[
+      if (perms.contains(AppPermission.camera)) 'Камера и фото: `image_picker` (`ImagePicker().pickImage(source: ImageSource.camera)`).',
+      if (perms.contains(AppPermission.location))
+        'Геолокация: `geolocator` — `checkPermission`/`requestPermission`, затем `getCurrentPosition`.',
+      if (perms.contains(AppPermission.internet)) 'Сеть: `http` с таймаутами и обработкой ошибок (сообщение пользователю, кнопка «Повторить»).',
+      'Разрешения уже перечислены в appbuilder.json — сборщик добавит их в AndroidManifest.xml и Info.plist. '
+          'Отказ пользователя обрабатывай: объясни и не падай.',
+    ];
+    b.writeln('## Разрешения и API устройства');
+    b.writeln();
+    _bullets(b, runtime);
+  }
+
   // ------------------------------------------------------------ final parts
 
   void _forbidden(StringBuffer b, PromptConfig c) {
@@ -662,8 +782,10 @@ ${permissionXml.isEmpty ? '' : '$permissionXml\n'}
     _bullets(b, [
       'Заглушки, моки, фейковые данные, «TODO», «// остальной код», имитация загрузки через таймеры вместо реальной логики.',
       'Папка-обёртка верхнего уровня в архиве; `node_modules/`, `dist/`, `build/`, `.git/`, ключи подписи.',
-      if (!c.appType.isNative) 'Абсолютные пути (`/app.js`), `file://`, CDN-ссылки, `http://`.',
+      if (c.appType.usesWebView) 'Абсолютные пути (`/app.js`), `file://`, CDN-ссылки, `http://`.',
       if (c.appType.isNative) 'Gradle-файлы, `local.properties`, иконки `ic_launcher`, атрибут `package` в манифесте.',
+      if (c.appType.isFlutter)
+        'Папки `android/`, `ios/`, `build/`, `.dart_tool/`, файл `pubspec.lock`, иконки и нативный код — их создаёт сборщик.',
       'Выдуманные API-ключи и адреса. Если нужен ключ — сделай поле ввода в настройках.',
       'Сокращение файлов: каждый файл выводится целиком.',
     ]);
@@ -695,7 +817,7 @@ ${permissionXml.isEmpty ? '' : '$permissionXml\n'}
     final items = [
       'Все файлы из структуры созданы, ни один не сокращён.',
       '`appbuilder.json` совпадает с приведённым выше (пакет `${c.packageName}`).',
-      if (!c.appType.isNative) ...[
+      if (c.appType.usesWebView) ...[
         'Все ссылки в HTML/CSS/JS относительные (`./…`), внешних CDN нет.',
         'Манифест подключён, `icon.svg` существует.',
       ],
@@ -707,6 +829,11 @@ ${permissionXml.isEmpty ? '' : '$permissionXml\n'}
         'Все `.kt` файлы начинаются с `package ${c.packageName}…`, импорты существуют в подключённых библиотеках.',
         'Каждый ресурс, на который ссылается код (`R.layout`, `R.string`, `R.id`, `@style/Theme.App`), объявлен.',
         'Код компилируется Kotlin ${Toolchain.kotlin} без ошибок: нет устаревших/удалённых API, все `@OptIn` проставлены.',
+      ],
+      if (c.appType.isFlutter) ...[
+        '`pubspec.yaml`: `name: ${_dartName(c)}`, `version: ${c.versionName}+1`, все импортируемые пакеты перечислены.',
+        'Импорты своих файлов — `package:${_dartName(c)}/…`; код проходит `flutter analyze` без ошибок на Flutter ${Toolchain.flutter}.',
+        'Нет `dart:html`, `dart:io`-путей без `path_provider`, Android- или iOS-only пакетов.',
       ],
       'Данные действительно сохраняются и восстанавливаются после перезапуска.',
       'Каждая кнопка и экран выполняют реальное действие.',

@@ -28,7 +28,7 @@ class IpaPanel extends StatelessWidget {
           const SizedBox(height: 10),
           const GradientProgressBar(value: null),
           const SizedBox(height: 6),
-          Text('Обычно 3–6 минут после APK. Статус обновляется сам.', style: muted),
+          Text('Веб-проект — 3–6 минут после APK, Flutter — 8–15. Статус обновляется сам.', style: muted),
         ]),
       IosBuildState.failed => NoticeBox(
           text: info.error ?? 'Сборка для iPhone не удалась.',

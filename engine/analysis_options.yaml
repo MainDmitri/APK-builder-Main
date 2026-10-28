@@ -1,5 +1,10 @@
 include: package:lints/recommended.yaml
 
+analyzer:
+  exclude:
+    # Sample projects are analyzed by their own toolchains (Flutter, npm).
+    - samples/**
+
 linter:
   rules:
     - prefer_const_constructors

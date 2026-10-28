@@ -65,22 +65,30 @@ class ResolvedAppConfig {
     final config = analysis.config ?? const AppBuilderConfig();
     final manifest = analysis.manifest;
     final native = analysis.native;
+    final flutter = analysis.flutter;
 
     final appName = options.appName ??
         config.appName ??
         manifest?.name ??
         manifest?.shortName ??
         native?.label ??
+        flutter?.label ??
         _prettify(analysis.node?.packageName) ??
+        _prettify(flutter?.packageName) ??
         'My App';
 
     final packageName = options.packageName ??
         config.packageName ??
         native?.applicationId ??
+        flutter?.applicationId ??
         'com.appbuilder.${Validators.packageSegmentFrom(appName)}';
 
-    final versionName = options.versionName ?? config.versionName ?? analysis.node?.packageVersion ?? '1.0.0';
-    final versionCode = options.versionCode ?? config.versionCode ?? 1;
+    final versionName = options.versionName ??
+        config.versionName ??
+        analysis.node?.packageVersion ??
+        flutter?.versionName ??
+        '1.0.0';
+    final versionCode = options.versionCode ?? config.versionCode ?? flutter?.versionCode ?? 1;
 
     final orientation = options.orientation ??
         config.orientation ??

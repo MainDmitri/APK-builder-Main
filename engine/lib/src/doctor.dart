@@ -37,6 +37,7 @@ class EngineDoctor {
       ToolStatus('apksigner', config.apksignerPath != null && File(config.apksignerPath!).existsSync(), config.apksignerPath ?? '-'),
       ToolStatus('templates', Directory(config.templatesDir).existsSync(), config.templatesDir),
       await _version('rsvg-convert', ['rsvg-convert', '--version'], required: false),
+      await _version('flutter', [config.flutterCommand, '--version'], required: false, firstLineOnly: true),
     ];
   }
 

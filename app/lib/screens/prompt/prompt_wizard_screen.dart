@@ -27,6 +27,7 @@ class _PromptWizardScreenState extends State<PromptWizardScreen> {
     PromptAppType.game: Icons.sports_esports_outlined,
     PromptAppType.nativeAndroid: Icons.android,
     PromptAppType.nodeSpa: Icons.web,
+    PromptAppType.flutter: Icons.flutter_dash,
   };
 
   @override
@@ -123,7 +124,7 @@ class _PromptWizardScreenState extends State<PromptWizardScreen> {
               _label('Интерфейс'),
               _segmented<NativeUi>(NativeUi.values, c.nativeUi, (v) => c.update((p) => p.nativeUi = v), (v) => v.title),
             ],
-          PromptAppType.utility => const <Widget>[],
+          PromptAppType.utility || PromptAppType.flutter => const <Widget>[],
         },
       ],
     );
@@ -179,7 +180,7 @@ class _PromptWizardScreenState extends State<PromptWizardScreen> {
   }
 
   Widget _paramsStep(PromptController c) {
-    final perms = c.appType.isNative ? AppPermission.values : AppPermission.values.where(AppPermission.webSupported.contains);
+    final perms = c.appType.usesWebView ? AppPermission.values.where(AppPermission.webSupported.contains) : AppPermission.values;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

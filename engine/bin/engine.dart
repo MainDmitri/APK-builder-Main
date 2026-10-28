@@ -323,8 +323,17 @@ class SelfTestCommand extends Command<int> {
 
     final results = <String, String>{};
     var first = true;
+    bool? flutterInstalled;
     for (final sample in samples) {
       final name = p.basename(sample.path);
+      if (File(p.join(sample.path, 'pubspec.yaml')).existsSync()) {
+        flutterInstalled ??= _flutterInstalled(config.flutterCommand);
+        if (!flutterInstalled) {
+          results[name] = 'SKIP Flutter SDK не установлен';
+          stdout.writeln('▶ $name\n   ${results[name]}');
+          continue;
+        }
+      }
       final work = await Directory.systemTemp.createTemp('appbuilder-selftest-$name');
       final zipPath = p.join(work.path, '$name.zip');
       final encoder = ZipFileEncoder()..create(zipPath);
@@ -358,7 +367,15 @@ class SelfTestCommand extends Command<int> {
     }
     stdout.writeln('\nИтог:');
     results.forEach((k, v) => stdout.writeln('  $k: $v'));
-    return results.values.every((v) => v.startsWith('OK')) ? 0 : 1;
+    return results.values.every((v) => v.startsWith('OK') || v.startsWith('SKIP')) ? 0 : 1;
+  }
+
+  static bool _flutterInstalled(String command) {
+    try {
+      return Process.runSync(command, ['--version']).exitCode == 0;
+    } on ProcessException {
+      return false;
+    }
   }
 
   Future<KeystoreSpec> _productionKeystore(String dir, BuildLog log) async {

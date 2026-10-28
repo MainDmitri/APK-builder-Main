@@ -171,8 +171,9 @@ class _ProjectSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (project == null) ...[
-            const Text('Веб-проект (index.html), Node.js-проект (package.json: React, Vue, Vite…) '
-                'или Android-исходники (AndroidManifest.xml, Kotlin/Java). Файлы — в корне архива.'),
+            const Text('Веб-проект (index.html), Node.js-проект (package.json: React, Vue, Vite…), '
+                'Flutter-проект (pubspec.yaml + lib/) или Android-исходники (AndroidManifest.xml, Kotlin/Java). '
+                'Файлы — в корне архива.'),
             const SizedBox(height: 12),
           ] else
             ListTile(
@@ -206,6 +207,11 @@ class _ProjectSection extends StatelessWidget {
               ],
               if (analysis.native?.usesCompose ?? false) const Chip(label: Text('Jetpack Compose')),
               if (analysis.native != null && !(analysis.native!.usesKotlin)) const Chip(label: Text('Java')),
+              if (analysis.flutter case final f?) ...[
+                Chip(label: Text('pubspec: ${f.packageName}')),
+                Chip(label: Text(f.hasAndroid ? 'android/ из архива' : 'android/ создаст flutter create')),
+                if (f.dependencies.isNotEmpty) Chip(label: Text('Пакетов: ${f.dependencies.length}')),
+              ],
             ]),
             if (analysis.node != null)
               _kv(context, 'Команды', '${analysis.node!.installCommand.join(' ')}  →  ${analysis.node!.buildCommand.join(' ')}'),
@@ -319,6 +325,12 @@ class _ParametersSection extends StatelessWidget {
             const Padding(
               padding: EdgeInsets.only(top: 8),
               child: Text('Отмеченные разрешения будут добавлены в AndroidManifest.xml, если их там нет.'),
+            ),
+          if (c.isFlutter)
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text('Flutter: название, пакет (applicationId / bundle id), версия, ориентация и разрешения '
+                  'записываются в android/ и ios/ проекта; недостающие папки создаст flutter create.'),
             ),
         ],
       ),

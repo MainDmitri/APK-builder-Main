@@ -4,9 +4,9 @@ name: Inbox build
 #   inbox/<id>/project.zip + inbox/<id>/request.json
 # and this workflow builds the APK with the same engine code and publishes it
 # as the pre-release "build-<id>" (assets: APK, build.log, result.json).
-# Requests with "ios": true also get an unsigned .ipa for iPhone (web projects
-# only): the Xcode project is generated here, compiled by the "ios" job on
-# macOS and attached to the same release (ios-result.json, ios-build.log).
+# Requests with "ios": true also get an unsigned .ipa for iPhone (web and
+# Flutter projects): the iOS project is prepared here, compiled by the "ios" job
+# on macOS and attached to the same release (ios-result.json, ios-build.log).
 
 on:
   push:
@@ -30,6 +30,7 @@ jobs:
     timeout-minutes: 90
     outputs:
       ios_ids: ${{ steps.ios.outputs.ids }}
+      ios_flutter: ${{ steps.ios.outputs.flutter }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,6 +53,24 @@ jobs:
           done
           echo "ids=${pending# }" >> "$GITHUB_OUTPUT"
           echo "Pending: ${pending:-none}"
+      - name: Detect Flutter projects
+        id: flutter
+        if: steps.pending.outputs.ids != ''
+        env:
+          IDS: ${{ steps.pending.outputs.ids }}
+        run: |
+          needed=false
+          for id in $IDS; do
+            if unzip -Z1 "inbox/$id/project.zip" | grep -qE '(^|/)pubspec\.yaml$'; then needed=true; fi
+          done
+          echo "needed=$needed" >> "$GITHUB_OUTPUT"
+          echo "Flutter: $needed"
+      - uses: subosito/flutter-action@v2
+        if: steps.flutter.outputs.needed == 'true'
+        with:
+          flutter-version: '3.47.6'
+          channel: stable
+          cache: true
       - uses: dart-lang/setup-dart@v1
         if: steps.pending.outputs.ids != ''
         with:
@@ -142,6 +161,7 @@ jobs:
           APPBUILDER_TEMPLATES: ${{ github.workspace }}/engine/templates
         run: |
           ready=""
+          flutter=false
           for id in $IDS; do
             dir="inbox/$id"
             [ "$(jq -r '.ios // false' "$dir/request.json")" = "true" ] || continue
@@ -162,6 +182,7 @@ jobs:
             cat "$ios/ios-build.log"
             if [ $code -eq 0 ]; then
               ready="$ready $id"
+              [ -f "$ios/project/pubspec.yaml" ] && flutter=true
             else
               # Not a web project or the npm build failed: report it without macOS.
               jq '{success: false, error: (.error // "Не удалось подготовить iOS-проект, см. ios-build.log")}' \
@@ -172,7 +193,8 @@ jobs:
             fi
           done
           echo "ids=${ready# }" >> "$GITHUB_OUTPUT"
-          echo "iOS: ${ready:-none}"
+          echo "flutter=$flutter" >> "$GITHUB_OUTPUT"
+          echo "iOS: ${ready:-none} (Flutter: $flutter)"
       - uses: actions/upload-artifact@v4
         if: steps.ios.outputs.ids != ''
         with:
@@ -220,6 +242,12 @@ jobs:
         with:
           name: ios-projects
           path: ios
+      - uses: subosito/flutter-action@v2
+        if: needs.build.outputs.ios_flutter == 'true'
+        with:
+          flutter-version: '3.47.6'
+          channel: stable
+          cache: true
       - name: Build unsigned IPAs and attach them to the releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

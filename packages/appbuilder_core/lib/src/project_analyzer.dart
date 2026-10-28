@@ -40,7 +40,7 @@ class ProjectIcon {
 class ProjectAnalyzer {
   const ProjectAnalyzer();
 
-  static const _ignoredSegments = {'__MACOSX', '.git', '.idea', '.gradle', '.vscode', '.svn'};
+  static const _ignoredSegments = {'__MACOSX', '.git', '.idea', '.gradle', '.vscode', '.svn', '.dart_tool'};
   static const _ignoredNames = {'.DS_Store', 'Thumbs.db', 'desktop.ini'};
 
   static bool isIgnored(String path) {
@@ -120,10 +120,20 @@ class ProjectAnalyzer {
         : (fallbackConfig == null ? null : source.readText(fallbackConfig));
     if (configText != null) ctx.config = AppBuilderConfig.parse(configText, ctx.errors, ctx.warnings);
 
+    if (isFlutterPubspec(ctx.read('pubspec.yaml'))) return _analyzeFlutter(ctx);
     if (ctx.has('package.json') && !_nodeFallsBackToStatic(ctx)) return _analyzeNode(ctx);
     if (ctx.has('index.html')) return _analyzeStatic(ctx);
 
     if (nestedNote == null) {
+      // Flutter project in a subfolder (it has android/settings.gradle too).
+      final flutterRoot = _shallowestDir(ctx.files, (name) => name == 'pubspec.yaml');
+      if (flutterRoot != null &&
+          flutterRoot.isNotEmpty &&
+          isFlutterPubspec(ctx.read('$flutterRoot/pubspec.yaml'))) {
+        return _analyzeAt(source, all, '$prefix$flutterRoot/',
+            nestedNote: _nestedNote(ctx.files, flutterRoot, 'Flutter-проект (pubspec.yaml)'),
+            fallbackConfig: ctx.has('appbuilder.json') ? '${prefix}appbuilder.json' : null);
+      }
       // Android project in a subfolder (e.g. android/settings.gradle).
       final gradleRoot = _shallowestDir(ctx.files, (name) => name == 'settings.gradle' || name == 'settings.gradle.kts');
       if (gradleRoot != null && gradleRoot.isNotEmpty) {
@@ -493,6 +503,14 @@ class ProjectAnalyzer {
         return web(prefix);
       case ProjectKind.nodeProject:
         return web('${prefix}public/', predicted: true);
+      case ProjectKind.flutterProject:
+        final base = '${prefix}android/app/src/main/res/';
+        const order = ['xxxhdpi', 'xxhdpi', 'xhdpi', 'hdpi', 'mdpi'];
+        for (final density in order) {
+          final path = '${base}mipmap-$density/ic_launcher.png';
+          if (paths.contains(path)) return ProjectIcon(path);
+        }
+        return null;
       case ProjectKind.nativeSources:
       case ProjectKind.nativeGradle:
         final manifestPath = analysis.native?.manifestPath;
@@ -520,6 +538,74 @@ class ProjectAnalyzer {
       case ProjectKind.unsupported:
         return null;
     }
+  }
+
+  // ---------------------------------------------------------------- Flutter
+
+  /// pubspec.yaml of a Flutter app: depends on the Flutter SDK.
+  static bool isFlutterPubspec(String? pubspec) =>
+      pubspec != null && RegExp(r'^\s+sdk:\s*flutter\s*$', multiLine: true).hasMatch(pubspec);
+
+  /// `name:` of a pubspec.yaml.
+  static String? pubspecName(String pubspec) =>
+      RegExp(r'^name:\s*([A-Za-z0-9_]+)\s*$', multiLine: true).firstMatch(pubspec)?.group(1);
+
+  /// `version: 1.2.3+4` → ('1.2.3', 4).
+  static (String?, int?) pubspecVersion(String pubspec) {
+    final raw = RegExp(r'^version:\s*([^\s#]+)', multiLine: true).firstMatch(pubspec)?.group(1);
+    if (raw == null) return (null, null);
+    final plus = raw.indexOf('+');
+    return plus < 0 ? (raw, null) : (raw.substring(0, plus), int.tryParse(raw.substring(plus + 1)));
+  }
+
+  /// Names of the direct dependencies (top-level `dependencies:` block).
+  static List<String> pubspecDependencies(String pubspec) {
+    final block = RegExp(r'^dependencies:\s*\n((?:[ \t]+.*\n?|\s*\n)*)', multiLine: true).firstMatch(pubspec)?.group(1) ?? '';
+    return RegExp(r'^  ([A-Za-z0-9_]+):', multiLine: true)
+        .allMatches(block)
+        .map((m) => m.group(1)!)
+        .where((d) => d != 'flutter')
+        .toList();
+  }
+
+  ProjectAnalysis _analyzeFlutter(_Ctx ctx) {
+    final pubspec = ctx.read('pubspec.yaml')!;
+    final name = pubspecName(pubspec);
+    if (name == null) {
+      ctx.errors.add('В pubspec.yaml нет поля name.');
+    } else if (!RegExp(r'^[a-z][a-z0-9_]*$').hasMatch(name)) {
+      ctx.errors.add('name в pubspec.yaml («$name») должен состоять из строчных латинских букв, цифр и «_».');
+    }
+    if (!ctx.has('lib/main.dart')) ctx.errors.add('Нет lib/main.dart — точки входа Flutter-приложения.');
+
+    final hasAndroid = ctx.files.any((f) => f.startsWith('android/'));
+    final hasIos = ctx.files.any((f) => f.startsWith('ios/'));
+    final gradle = ctx.read('android/app/build.gradle.kts') ?? ctx.read('android/app/build.gradle') ?? '';
+    final applicationId = RegExp(r'''applicationId\s*=?\s*["']([A-Za-z0-9_.]+)["']''').firstMatch(gradle)?.group(1);
+    final manifest = ctx.read('android/app/src/main/AndroidManifest.xml') ?? '';
+    final rawLabel = RegExp(r'android:label\s*=\s*"([^"]*)"').firstMatch(manifest)?.group(1);
+    final dependencies = pubspecDependencies(pubspec);
+    final (versionName, versionCode) = pubspecVersion(pubspec);
+
+    if (dependencies.any((d) => d.startsWith('firebase_')) && !ctx.has('android/app/google-services.json')) {
+      ctx.warnings.add('Используется Firebase, но нет android/app/google-services.json '
+          '(и ios/Runner/GoogleService-Info.plist для iPhone) — без них Firebase не запустится.');
+    }
+    if (ctx.files.any((f) => f.startsWith('build/'))) {
+      ctx.warnings.add('Папка build/ в архиве не нужна — она будет удалена перед сборкой.');
+    }
+
+    ctx.flutter = FlutterProjectInfo(
+      packageName: name ?? 'app',
+      versionName: versionName,
+      versionCode: versionCode,
+      hasAndroid: hasAndroid,
+      hasIos: hasIos,
+      applicationId: applicationId,
+      label: rawLabel == null || rawLabel.startsWith('@') ? null : rawLabel,
+      dependencies: dependencies,
+    );
+    return ctx.build(ProjectKind.flutterProject);
   }
 
   // ----------------------------------------------------------------- Native
@@ -873,6 +959,7 @@ class _Ctx {
   String? manifestPath;
   NodeProjectInfo? node;
   NativeProjectInfo? native;
+  FlutterProjectInfo? flutter;
   String? indexHtml;
 
   bool has(String path) => files.contains(path);
@@ -899,6 +986,7 @@ class _Ctx {
       manifestPath: manifestPath,
       node: node,
       native: native,
+      flutter: flutter,
       indexHtml: indexHtml,
     );
   }

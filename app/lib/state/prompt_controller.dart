@@ -67,7 +67,7 @@ class PromptController extends ChangeNotifier {
 
   void update(void Function(PromptController c) change) {
     change(this);
-    if (!appType.isNative) permissions = permissions.where(AppPermission.webSupported.contains).toSet();
+    if (appType.usesWebView) permissions = permissions.where(AppPermission.webSupported.contains).toSet();
     notifyListeners();
   }
 

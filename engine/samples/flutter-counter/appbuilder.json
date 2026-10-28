@@ -1,0 +1,12 @@
+{
+  "appName": "Счётчик",
+  "packageName": "net.appbuilder.samples.fluttercounter",
+  "versionName": "1.0.0",
+  "versionCode": 1,
+  "orientation": "portrait",
+  "permissions": [],
+  "web": {
+    "themeColor": "#EF6C00",
+    "backgroundColor": "#FFFFFF"
+  }
+}

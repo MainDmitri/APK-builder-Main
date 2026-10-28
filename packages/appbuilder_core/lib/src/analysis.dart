@@ -139,6 +139,50 @@ class NativeProjectInfo {
       };
 }
 
+/// Details of a Flutter project (`pubspec.yaml` with the Flutter SDK).
+class FlutterProjectInfo {
+  const FlutterProjectInfo({
+    required this.packageName,
+    this.versionName,
+    this.versionCode,
+    this.hasAndroid = false,
+    this.hasIos = false,
+    this.applicationId,
+    this.label,
+    this.dependencies = const [],
+  });
+
+  /// `name:` of pubspec.yaml (Dart package name).
+  final String packageName;
+  final String? versionName;
+  final int? versionCode;
+
+  /// `android/` and `ios/` platform folders are in the archive (missing ones
+  /// are generated with `flutter create`).
+  final bool hasAndroid;
+  final bool hasIos;
+
+  /// From android/app/build.gradle(.kts), when present.
+  final String? applicationId;
+
+  /// android:label of android/app/src/main/AndroidManifest.xml.
+  final String? label;
+
+  /// Direct dependencies listed in pubspec.yaml.
+  final List<String> dependencies;
+
+  Map<String, Object?> toJson() => {
+        'packageName': packageName,
+        if (versionName != null) 'versionName': versionName,
+        if (versionCode != null) 'versionCode': versionCode,
+        'hasAndroid': hasAndroid,
+        'hasIos': hasIos,
+        if (applicationId != null) 'applicationId': applicationId,
+        if (label != null) 'label': label,
+        'dependencies': dependencies,
+      };
+}
+
 /// Result of [ProjectAnalyzer.analyze].
 class ProjectAnalysis {
   const ProjectAnalysis({
@@ -152,6 +196,7 @@ class ProjectAnalysis {
     this.manifestPath,
     this.node,
     this.native,
+    this.flutter,
     this.indexHtml,
   });
 
@@ -174,6 +219,7 @@ class ProjectAnalysis {
   final String? manifestPath;
   final NodeProjectInfo? node;
   final NativeProjectInfo? native;
+  final FlutterProjectInfo? flutter;
 
   /// Web root entry point (relative to the web root).
   final String? indexHtml;
@@ -194,6 +240,7 @@ class ProjectAnalysis {
         manifestPath: manifestPath ?? this.manifestPath,
         node: node,
         native: native,
+        flutter: flutter,
         indexHtml: indexHtml,
       );
 
@@ -211,6 +258,7 @@ class ProjectAnalysis {
         if (manifestPath != null) 'manifestPath': manifestPath,
         if (node != null) 'node': node!.toJson(),
         if (native != null) 'native': native!.toJson(),
+        if (flutter != null) 'flutter': flutter!.toJson(),
         'plan': plan.stages.map((s) => s.title).toList(),
       };
 }
@@ -221,6 +269,8 @@ enum BuildStage {
   nodeBuild('Сборка веб-проекта (run build)'),
   webAssets('Копирование веб-ассетов в WebView-оболочку'),
   androidProject('Генерация Android-проекта'),
+  flutterPrepare('Flutter: подготовка проекта (flutter create, pub get)'),
+  flutterBuild('Flutter: flutter build apk --release'),
   gradle('Gradle assembleRelease'),
   zipalign('zipalign -p 4'),
   sign('apksigner: подпись v1 + v2 + v3'),
@@ -266,6 +316,12 @@ class BuildPlan {
         ProjectKind.nativeGradle => const BuildPlan([
             BuildStage.extract,
             BuildStage.gradle,
+            ..._signing,
+          ]),
+        ProjectKind.flutterProject => const BuildPlan([
+            BuildStage.extract,
+            BuildStage.flutterPrepare,
+            BuildStage.flutterBuild,
             ..._signing,
           ]),
         ProjectKind.unsupported => const BuildPlan([BuildStage.extract]),

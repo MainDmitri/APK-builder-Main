@@ -21,8 +21,8 @@ class IosSection extends StatelessWidget {
     if (!(backend?.supportsIos ?? false)) {
       child = const Text('Сборка для iPhone доступна в режиме «GitHub Actions»: для неё нужен macOS с Xcode, '
           'а он есть только там.');
-    } else if (!c.isWeb) {
-      child = const Text('Для iPhone собираются только веб-проекты (HTML/JS, React, Vue, Vite). '
+    } else if (!(c.analysis?.kind.supportsIos ?? false)) {
+      child = const Text('Для iPhone собираются веб-проекты (HTML/JS, React, Vue, Vite) и Flutter. '
           'Код Kotlin/Java работает только на Android.');
     } else {
       child = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -34,7 +34,8 @@ class IosSection extends StatelessWidget {
           subtitle: const Text('Неподписанный .ipa: ставится с компьютера через Sideloadly под вашим Apple ID.'),
         ),
         Text(
-          'Сборка на macOS добавляет 3–6 минут. В приватном репозитории минуты macOS расходуются в 10 раз быстрее.',
+          'Сборка на macOS добавляет ${c.isFlutter ? '8–15' : '3–6'} минут. '
+          'В приватном репозитории минуты macOS расходуются в 10 раз быстрее.',
           style: muted,
         ),
       ]);

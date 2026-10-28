@@ -221,10 +221,16 @@ void main() {
     downloads.dispose();
   });
 
-  test('iPhone builds need GitHub Actions and a web project', () {
+  test('iPhone builds need GitHub Actions and a web or Flutter project', () {
     final c = BuildController()
       ..analysis = analyzeNative();
     expect(c.iosAvailable(_ScriptedBackend(url('/app.apk'), 1)), isFalse);
+    c.analysis = const ProjectAnalyzer().analyze(ZipMemorySource.fromBytes(_zip({
+      'pubspec.yaml': 'name: app\ndependencies:\n  flutter:\n    sdk: flutter\n',
+      'lib/main.dart': 'void main() {}',
+    })));
+    expect(c.isFlutter, isTrue);
+    expect(c.iosAvailable(_ScriptedBackend(url('/app.apk'), 1)), isTrue);
     c.dispose();
   });
 

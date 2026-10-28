@@ -97,8 +97,10 @@ class BuildController extends ChangeNotifier {
   /// No new build can start: submission, APK or IPA in progress.
   bool get busy => submitting || buildRunning || iosPending;
 
-  /// iPhone builds: GitHub Actions (macOS) and web projects only.
-  bool iosAvailable(BuildBackend? backend) => (backend?.supportsIos ?? false) && isWeb;
+  /// iPhone builds: GitHub Actions (macOS), web and Flutter projects.
+  bool iosAvailable(BuildBackend? backend) => (backend?.supportsIos ?? false) && (analysis?.kind.supportsIos ?? false);
+
+  bool get isFlutter => analysis?.kind == ProjectKind.flutterProject;
 
   void setBuildIos(bool value) {
     buildIos = value;

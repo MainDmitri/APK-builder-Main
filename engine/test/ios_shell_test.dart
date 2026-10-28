@@ -96,7 +96,7 @@ void main() {
         IosProjectRequest(zipPath: zip, workDir: p.join(tmp.path, 'work'), projectDir: p.join(tmp.path, 'ios')),
         log,
       ),
-      throwsA(isA<BuildFailure>().having((e) => e.message, 'message', contains('только веб-проекты'))),
+      throwsA(isA<BuildFailure>().having((e) => e.message, 'message', contains('код Kotlin/Java работает только на Android'))),
     );
   });
 }
