@@ -33,6 +33,22 @@ void main() {
     expect(r.startUrl, 'index.html');
   });
 
+  test('Android permission names: known ones map to ids, the rest go to the manifest as is', () {
+    final a = analyzeFiles({
+      'pubspec.yaml': 'name: scanner\ndependencies:\n  flutter:\n    sdk: flutter\n',
+      'lib/main.dart': 'void main() {}',
+      'appbuilder.json': '{"permissions":["INTERNET","ACCESS_NETWORK_STATE","android.permission.ACCESS_FINE_LOCATION",'
+          '"POST_NOTIFICATIONS","WAKE_LOCK","ACCESS_WIFI_STATE","WAKE_LOCK","bluetooth-ish"]}',
+    });
+    expect(a.warnings.where((w) => w.contains('разрешение')), ['appbuilder.json: неизвестное разрешение «bluetooth-ish» пропущено.']);
+    final r = ResolvedAppConfig.resolve(a, const BuildOptions());
+    expect(r.permissions, {AppPermission.internet, AppPermission.location, AppPermission.notifications});
+    expect(r.extraAndroidPermissions, ['android.permission.WAKE_LOCK', 'android.permission.ACCESS_WIFI_STATE']);
+    expect(r.manifestPermissions.map((m) => m.name), containsAll(['android.permission.ACCESS_COARSE_LOCATION', 'android.permission.WAKE_LOCK']));
+    expect(AppPermission.tryParse('camera'), AppPermission.camera);
+    expect(AppPermission.tryParse('android.permission.CAMERA'), AppPermission.camera);
+  });
+
   test('remote start url forces internet permission', () {
     final a = analyzeFiles({
       'index.html': '',

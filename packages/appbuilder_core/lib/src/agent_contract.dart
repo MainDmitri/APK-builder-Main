@@ -121,7 +121,7 @@ appbuilder.json
 | `versionName` | string | Версия для пользователя, `1.0.0` |
 | `versionCode` | int | Целое ≥ 1, растёт с каждым релизом |
 | `orientation` | string | `portrait` \\| `landscape` \\| `sensor` |
-| `permissions` | string[] | Идентификаторы из таблицы ниже |
+| `permissions` | string[] | Идентификаторы из таблицы ниже; Android-имена (`ACCESS_FINE_LOCATION`, `WAKE_LOCK`) тоже принимаются — не входящие в таблицу добавляются в AndroidManifest нативных и Flutter-приложений как есть |
 | `web.outputDir` | string | Папка результата `npm run build` (профиль B), если отличается от стандартной |
 | `web.startUrl` | string | Стартовая страница: относительный путь (`index.html`) или `https://…` для обёртки сайта |
 | `web.fullscreen` | bool | Скрыть системные панели (игры) |

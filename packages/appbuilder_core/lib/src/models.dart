@@ -101,12 +101,25 @@ enum AppPermission {
     vibration,
   };
 
+  /// Accepts an id (`location`) or an Android name it covers
+  /// (`ACCESS_FINE_LOCATION`, `android.permission.ACCESS_FINE_LOCATION`).
   static AppPermission? tryParse(String value) {
     final v = value.trim().toLowerCase();
     for (final p in values) {
       if (p.id == v) return p;
     }
+    final android = androidName(value);
+    if (android == null) return null;
+    for (final p in values) {
+      if (p.manifestPermissions.any((m) => m.name == android)) return p;
+    }
     return null;
+  }
+
+  /// `WAKE_LOCK` / `android.permission.WAKE_LOCK` → `android.permission.WAKE_LOCK`; null if not an Android name.
+  static String? androidName(String value) {
+    final m = RegExp(r'^(?:android\.permission\.)?([A-Z][A-Z0-9_]*)$').firstMatch(value.trim());
+    return m == null ? null : 'android.permission.${m.group(1)}';
   }
 }
 
@@ -207,6 +220,7 @@ class AppBuilderConfig {
     this.openLinksExternally,
     this.dependencies = const [],
     this.compose,
+    this.androidPermissions = const [],
   });
 
   final String? appName;
@@ -228,6 +242,10 @@ class AppBuilderConfig {
   final List<String> dependencies;
   final bool? compose;
 
+  /// Android permissions from `permissions` that no [AppPermission] covers
+  /// (`android.permission.WAKE_LOCK`): added to the manifest of native and Flutter apps.
+  final List<String> androidPermissions;
+
   /// Parses appbuilder.json. Problems are appended to [errors] / [warnings].
   static AppBuilderConfig parse(String source, List<String> errors, List<String> warnings) {
     final Object? decoded;
@@ -245,15 +263,19 @@ class AppBuilderConfig {
     final android = decoded['android'] is Map ? decoded['android'] as Map : const {};
 
     Set<AppPermission>? permissions;
+    final androidPermissions = <String>[];
     final rawPerms = decoded['permissions'];
     if (rawPerms is List) {
       permissions = {};
       for (final p in rawPerms) {
         final parsed = p is String ? AppPermission.tryParse(p) : null;
-        if (parsed == null) {
-          warnings.add('appbuilder.json: неизвестное разрешение «$p» пропущено.');
-        } else {
+        final android = p is String ? AppPermission.androidName(p) : null;
+        if (parsed != null) {
           permissions.add(parsed);
+        } else if (android != null) {
+          if (!androidPermissions.contains(android)) androidPermissions.add(android);
+        } else {
+          warnings.add('appbuilder.json: неизвестное разрешение «$p» пропущено.');
         }
       }
     }
@@ -291,6 +313,7 @@ class AppBuilderConfig {
       openLinksExternally: web['openLinksExternally'] is bool ? web['openLinksExternally'] as bool : null,
       dependencies: deps,
       compose: android['compose'] is bool ? android['compose'] as bool : null,
+      androidPermissions: androidPermissions,
     );
   }
 }

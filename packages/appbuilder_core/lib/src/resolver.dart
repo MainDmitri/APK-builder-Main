@@ -18,6 +18,7 @@ class ResolvedAppConfig {
     required this.backgroundColor,
     required this.startUrl,
     required this.openLinksExternally,
+    this.extraAndroidPermissions = const [],
   });
 
   final String appName;
@@ -34,6 +35,15 @@ class ResolvedAppConfig {
   /// `https://` URL for remote-site wrappers.
   final String startUrl;
   final bool openLinksExternally;
+
+  /// Android permissions of appbuilder.json beyond [permissions] (native and Flutter apps).
+  final List<String> extraAndroidPermissions;
+
+  /// Everything that goes into AndroidManifest.xml of a native or Flutter app.
+  List<ManifestPermission> get manifestPermissions => [
+        ...permissions.expand((perm) => perm.manifestPermissions),
+        ...extraAndroidPermissions.map(ManifestPermission.new),
+      ];
 
   bool get isRemoteStart => startUrl.startsWith('https://') || startUrl.startsWith('http://');
 
@@ -59,6 +69,7 @@ class ResolvedAppConfig {
         'backgroundColor': backgroundColor,
         'startUrl': startUrl,
         'openLinksExternally': openLinksExternally,
+        if (extraAndroidPermissions.isNotEmpty) 'extraAndroidPermissions': extraAndroidPermissions,
       };
 
   static ResolvedAppConfig resolve(ProjectAnalysis analysis, BuildOptions options) {
@@ -126,6 +137,7 @@ class ResolvedAppConfig {
       backgroundColor: backgroundColor,
       startUrl: startUrl,
       openLinksExternally: config.openLinksExternally ?? true,
+      extraAndroidPermissions: config.androidPermissions,
     );
   }
 

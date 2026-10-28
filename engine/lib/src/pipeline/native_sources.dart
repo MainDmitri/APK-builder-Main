@@ -38,7 +38,7 @@ class NativeSourcesGenerator {
 
     final mainDir = p.join(androidDir, 'app', 'src', 'main');
     final manifestFile = File(p.join(mainDir, 'AndroidManifest.xml'));
-    final permissions = app.permissions.expand((perm) => perm.manifestPermissions).toList();
+    final permissions = app.manifestPermissions;
 
     if (info.sourceSetRoot != null) {
       copyDirectory(p.join(projectDir, info.sourceSetRoot!), mainDir, exclude: (rel) => _skip.hasMatch(rel));

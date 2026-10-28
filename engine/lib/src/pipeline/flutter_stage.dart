@@ -167,12 +167,13 @@ class FlutterStage {
     if (manifestFile.existsSync()) {
       var manifest = manifestFile.readAsStringSync();
       manifest = setApplicationLabel(manifest, app.appName);
-      manifest = ManifestTools.injectPermissions(manifest, app.permissions.expand((perm) => perm.manifestPermissions));
+      manifest = ManifestTools.injectPermissions(manifest, app.manifestPermissions);
       if (app.orientation != ScreenOrientation.sensor) {
         manifest = ManifestTools.ensureLauncherOrientation(manifest, app.orientation.androidValue);
       }
       manifestFile.writeAsStringSync(manifest);
-      log.add('AndroidManifest.xml: название «${app.appName}», разрешения: ${app.permissions.map((e) => e.id).join(', ')}');
+      log.add('AndroidManifest.xml: название «${app.appName}», разрешения: '
+          '${[...app.permissions.map((e) => e.id), ...app.extraAndroidPermissions].join(', ')}');
     }
 
     if (icon) {
