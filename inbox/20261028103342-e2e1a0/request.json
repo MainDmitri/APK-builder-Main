@@ -1,0 +1,8 @@
+{
+  "id": "20261028103342-e2e1a0",
+  "createdAt": "2026-10-28T10:33:42Z",
+  "projectFileName": "static-notes.zip",
+  "options": {"appName": "Notes", "packageName": "net.appbuilder.samples.notes", "signing": "debug"},
+  "ios": true,
+  "android": false
+}
