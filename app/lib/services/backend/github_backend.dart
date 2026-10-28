@@ -286,13 +286,33 @@ class GitHubBackend implements BuildBackend {
       return IosBuildInfo(state: IosBuildState.failed, error: result['error'] as String? ?? 'Сборка для iPhone не удалась.');
     }
     if (!await _iosRequestedFor(id)) return null;
-    if (release != null && (await _run(id))?['status'] == 'completed') {
+    final run = release == null ? null : await _run(id);
+    if (run != null && run['status'] == 'completed') return _iosJobProblem(run);
+    return const IosBuildInfo(state: IosBuildState.pending);
+  }
+
+  /// The run finished without ios-result.json: why the macOS job gave nothing.
+  Future<IosBuildInfo> _iosJobProblem(Map<String, dynamic> run) async {
+    final jobs = await _json('GET', '$_repoPath/actions/runs/${run['id']}/jobs', query: {'per_page': '50'});
+    final job = ((jobs['jobs'] as List?) ?? const [])
+        .cast<Map<String, dynamic>>()
+        .where((j) => (j['name'] as String? ?? '').startsWith('iPhone'))
+        .firstOrNull;
+    if (job == null) {
       return const IosBuildInfo(
         state: IosBuildState.failed,
         error: 'Workflow $workflowFile в репозитории не собирает iPhone: обновите его из шаблона AppBuilder.',
       );
     }
-    return const IosBuildInfo(state: IosBuildState.pending);
+    final cancelled = job['conclusion'] == 'cancelled';
+    return IosBuildInfo(
+      state: IosBuildState.failed,
+      error: cancelled
+          ? 'GitHub отменил сборку для iPhone: машина macOS не освободилась вовремя. Откройте запуск в GitHub '
+              '(«Открыть в GitHub» → Actions) и нажмите «Re-run failed jobs»; готовый .ipa появится на вкладке «История».'
+          : 'Сборка для iPhone на macOS завершилась ошибкой (${job['conclusion']}). Откройте запуск в GitHub '
+              '(«Открыть в GitHub» → Actions), посмотрите журнал задания «${job['name']}» и нажмите «Re-run failed jobs»; готовый .ipa появится на вкладке «История».',
+    );
   }
 
   @override
