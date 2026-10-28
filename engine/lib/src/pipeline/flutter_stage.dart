@@ -128,6 +128,41 @@ class FlutterStage {
     return apk.path;
   }
 
+  /// `flutter pub get` + `flutter analyze lib`: compile errors are found on
+  /// Linux in a minute instead of after a long Xcode build on macOS.
+  Future<void> checkDart(String projectDir, BuildLog log) async {
+    final pub = await runner.run(
+      [config.flutterCommand, 'pub', 'get'],
+      workingDirectory: projectDir,
+      log: log,
+      environment: _environment,
+      timeout: config.nodeInstallTimeout,
+    );
+    if (pub.exitCode != 0) {
+      throw BuildFailure('flutter pub get: не удалось установить пакеты.\n${summarizeErrors(pub.output)}');
+    }
+    final analyze = await runner.run(
+      [config.flutterCommand, 'analyze', '--no-pub', '--no-fatal-infos', '--no-fatal-warnings', 'lib'],
+      workingDirectory: projectDir,
+      log: log,
+      environment: _environment,
+      timeout: config.nodeInstallTimeout,
+    );
+    final errors = analyzerErrors(analyze.output);
+    if (errors.isNotEmpty) {
+      throw BuildFailure('Ошибки в коде Dart — приложение не скомпилируется (сборка на macOS не запускалась):\n'
+          '${errors.take(20).map((e) => '- $e').join('\n')}'
+          '${errors.length > 20 ? '\n- …и ещё ${errors.length - 20}' : ''}');
+    }
+    log.add('Код Dart проверен: ошибок компиляции нет.');
+  }
+
+  /// `error • message • lib/a.dart:1:2 • code` lines of `flutter analyze` → `lib/a.dart:1:2: message`.
+  static List<String> analyzerErrors(List<String> output) => [
+        for (final line in output)
+          if (RegExp(r'^\s*error • (.+?) • (\S+:\d+:\d+) • ').firstMatch(line) case final m?) '${m[2]}: ${m[1]}',
+      ];
+
   /// Dart compiler, pub and Gradle errors from the tool output.
   static String summarizeErrors(List<String> output) {
     final interesting = RegExp(r'(: Error: |^Error: |^error: |^e: |Because .* depends on|version solving failed|'

@@ -24,6 +24,10 @@ if [ -f pubspec.yaml ]; then
   if ! flutter build ios "${args[@]}" > "$out/flutter-$sdk.log" 2>&1; then
     grep -E "Error|error:|Failed" "$out/flutter-$sdk.log" | head -40 || true
     tail -40 "$out/flutter-$sdk.log"
+    if grep -q "Development Team" "$out/flutter-$sdk.log"; then
+      echo "Примечание: подсказку Flutter про Development Team можно не выполнять — .ipa собирается без подписи"
+      echo "(её подписывает Sideloadly). Причина ошибки — в строках Error / error выше."
+    fi
     exit 1
   fi
   app="build/ios/$sdk/Runner.app"

@@ -62,6 +62,49 @@ void main() {
     });
   });
 
+  test('analyzer errors are turned into short compile error lines', () {
+    expect(
+      FlutterStage.analyzerErrors([
+        'Analyzing lib...',
+        "  error • Undefined name '_primary'. Try correcting the name • lib/screens/results.dart:19:44 • undefined_identifier",
+        "warning • The declaration '_x' isn't referenced • lib/main.dart:3:7 • unused_element",
+        '   info • Use const • lib/main.dart:9:1 • prefer_const_constructors',
+      ]),
+      ["lib/screens/results.dart:19:44: Undefined name '_primary'. Try correcting the name"],
+    );
+  });
+
+  test('checkDart reports private names imported from another file', () async {
+    final tmp = await Directory.systemTemp.createTemp('engine-dartcheck');
+    final log = BuildLog(File(p.join(tmp.path, 'test.log')));
+    try {
+      final project = p.join(tmp.path, 'project');
+      Directory(p.join(project, 'lib', 'screens')).createSync(recursive: true);
+      File(p.join(project, 'pubspec.yaml'))
+          .writeAsStringSync('name: app\nenvironment:\n  sdk: ^3.13.0\ndependencies:\n  flutter:\n    sdk: flutter\n');
+      File(p.join(project, 'lib', 'main.dart')).writeAsStringSync(
+          "import 'package:flutter/material.dart';\nimport 'screens/home.dart';\nconst _primary = Color(0xFF000000);\n"
+          'void main() => runApp(const ColoredBox(color: _primary, child: Home()));\n');
+      File(p.join(project, 'lib', 'screens', 'home.dart')).writeAsStringSync(
+          "import 'package:flutter/material.dart';\nimport '../main.dart' show _primary;\n"
+          'class Home extends StatelessWidget {\n  const Home({super.key});\n'
+          '  @override\n  Widget build(BuildContext context) => const ColoredBox(color: _primary);\n}\n');
+      final stage = FlutterStage(testConfig(tmp.path));
+      await expectLater(
+        stage.checkDart(project, log),
+        throwsA(isA<BuildFailure>().having((e) => e.message, 'message', allOf(contains('lib/screens/home.dart'), contains('_primary')))),
+      );
+      File(p.join(project, 'lib', 'screens', 'home.dart')).writeAsStringSync(
+          "import 'package:flutter/material.dart';\n"
+          'class Home extends StatelessWidget {\n  const Home({super.key});\n'
+          '  @override\n  Widget build(BuildContext context) => const SizedBox();\n}\n');
+      await stage.checkDart(project, log);
+    } finally {
+      await log.close();
+      await tmp.delete(recursive: true);
+    }
+  }, skip: _flutterInstalled() ? false : 'Flutter SDK не установлен', timeout: const Timeout(Duration(minutes: 3)));
+
   test('a lib-only project gets android/ and ios/ with the app identity', () async {
     final tmp = await Directory.systemTemp.createTemp('engine-flutter');
     final log = BuildLog(File(p.join(tmp.path, 'test.log')));

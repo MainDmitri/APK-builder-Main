@@ -1052,6 +1052,8 @@ ${permissionXml.isEmpty ? '' : '$permissionXml\n'}
       if (c.effectiveType.isFlutter) ...[
         '`pubspec.yaml`: `name: ${_dartName(c)}`, `version: ${c.versionName}+1`, все импортируемые пакеты перечислены.',
         'Импорты своих файлов — `package:${_dartName(c)}/…`; код проходит `flutter analyze` без ошибок на Flutter ${Toolchain.flutter}.',
+        'Имена с `_` видны только в своём файле: общие цвета, стили и константы — в отдельном файле '
+            '(например `lib/theme/palette.dart`) с публичными именами, никаких `import … show _name`.',
         if (c.isIphone)
           'Нет `dart:html` и пакетов без поддержки iOS; файлы — через `path_provider`.'
         else

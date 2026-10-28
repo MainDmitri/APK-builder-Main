@@ -328,6 +328,10 @@ class BuildPipeline {
           customIcon: request.iconPath,
           log: log,
         );
+        log.section('Проверка кода Dart');
+        await flutter.checkDart(request.projectDir, log);
+        // Package paths of this machine: macOS resolves the packages itself.
+        deleteQuietly(p.join(request.projectDir, '.dart_tool'));
         return _iosOutcome(app);
       }
       var webRoot = projectDir;
