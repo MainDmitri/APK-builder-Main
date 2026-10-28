@@ -31,7 +31,8 @@ env:
   GRADLE_VERSION: 9.3.1
   SDK_CACHE_PATHS_LINUX: |
     ~/.appbuilder-sdk
-    ~/.gradle/caches/modules-2
+    ~/.gradle/caches
+    !~/.gradle/caches/**/*.lock
     ~/.gradle/wrapper
     ~/.pub-cache
     ~/.npm
@@ -77,8 +78,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.SDK_CACHE_PATHS_LINUX }}
-          key: appbuilder-sdk-linux-v1-${{ github.run_id }}
-          restore-keys: appbuilder-sdk-linux-v1-
+          key: appbuilder-sdk-linux-v2-${{ github.run_id }}
+          restore-keys: appbuilder-sdk-linux-v2-
       - name: Link cached Android SDK parts
         if: steps.pending.outputs.ids != ''
         run: bash .github/scripts/sdk-cache.sh link
@@ -130,6 +131,9 @@ jobs:
             echo "$gradle_home/bin" >> "$GITHUB_PATH"
           fi
           corepack enable
+          # Gradle build cache: compiled plugin modules and dexed libraries are reused by the next builds.
+          mkdir -p ~/.gradle && grep -qs '^org.gradle.caching=' ~/.gradle/gradle.properties \
+            || echo 'org.gradle.caching=true' >> ~/.gradle/gradle.properties
       - name: Restore debug keystore (stable signature between builds)
         if: steps.pending.outputs.ids != ''
         uses: actions/cache@v4
@@ -276,8 +280,10 @@ jobs:
         id: sdk-key
         if: always() && steps.pending.outputs.ids != ''
         run: |
+          # Gradle daemons keep cache files open: stop them before the cache is archived.
+          pkill -f 'org.gradle.launcher.daemon' || true
           bash .github/scripts/sdk-cache.sh collect
-          bash .github/scripts/sdk-cache.sh key appbuilder-sdk-linux-v1-
+          bash .github/scripts/sdk-cache.sh key appbuilder-sdk-linux-v2-
       - name: Save SDK cache (only when something new was downloaded)
         if: always() && steps.sdk-key.outputs.key != '' && steps.sdk-key.outputs.key != steps.sdk-restore.outputs.cache-matched-key
         uses: actions/cache/save@v4
