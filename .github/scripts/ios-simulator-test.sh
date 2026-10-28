@@ -25,7 +25,9 @@ xcrun simctl launch "$udid" "$bundle"
 sleep 20
 xcrun simctl io "$udid" screenshot "$out/simulator-$bundle.png" > /dev/null
 xcrun simctl spawn "$udid" log show --last 3m --style compact --predicate 'process == "App"' > "$out/simulator-$bundle.log" 2>&1 || true
-if xcrun simctl spawn "$udid" launchctl list | grep -q "UIKitApplication:$bundle"; then
+# Read the whole list first: `grep -q` closing the pipe early fails under pipefail.
+services=$(xcrun simctl spawn "$udid" launchctl list)
+if grep -q "UIKitApplication:$bundle" <<< "$services"; then
   echo "$bundle is running on the simulator"
 else
   echo "::error::$bundle is not running 20 s after launch"

@@ -234,8 +234,8 @@ class BuildPipeline {
       }
 
       final baseName = analysis.kind == ProjectKind.nativeGradle
-          ? (request.options.appName ?? analysis.native?.applicationId?.split('.').last ?? 'app')
-          : app.appName;
+          ? latinFileBase(request.options.appName, analysis.native?.applicationId ?? 'app')
+          : latinFileBase(app.appName, app.packageName);
       final version = analysis.kind == ProjectKind.nativeGradle ? (request.options.versionName ?? 'release') : app.versionName;
       final fileName = '${_safeFileName(baseName)}-${_safeFileName(version)}.apk';
       final aligned = p.join(outDir, 'aligned.apk');
@@ -325,8 +325,7 @@ class BuildPipeline {
         customIcon: request.iconPath,
       );
       final bundleId = IosShellGenerator.bundleId(app.packageName);
-      // Latin file name: Sideloadly and GitHub release assets handle it everywhere.
-      final baseName = RegExp(r'^[A-Za-z0-9 ._-]+$').hasMatch(app.appName) ? app.appName : bundleId.split('.').last;
+      final baseName = latinFileBase(app.appName, bundleId);
       return IosProjectOutcome(
         app: app,
         bundleId: bundleId,
@@ -365,6 +364,14 @@ class BuildPipeline {
     final errors = app.validate();
     if (errors.isNotEmpty) throw BuildFailure('Некорректные параметры приложения:\n- ${errors.join('\n- ')}');
   }
+
+  /// Base of the APK / IPA file name: the app name when it is Latin, else the
+  /// last segment of the package. GitHub drops other letters from release
+  /// asset names ("Заметки-1.0.0.apk" would become "-1.0.0.apk").
+  static String latinFileBase(String? appName, String packageName) =>
+      appName != null && RegExp(r'^[A-Za-z0-9 ._-]+$').hasMatch(appName.trim()) && appName.trim().isNotEmpty
+          ? appName.trim()
+          : packageName.split('.').last.replaceAll('_', '-');
 
   static String _safeFileName(String value) {
     final cleaned = value.replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1F]'), '').replaceAll(RegExp(r'\s+'), '-').trim();

@@ -22,7 +22,7 @@ if [ "$mode" = simulator ]; then
 else
   sdk=iphoneos; arch_args=(ARCHS=arm64)
 fi
-echo "xcodebuild: $sdk, $(xcodebuild -version | head -1)"
+echo "xcodebuild: $sdk, $(xcodebuild -version 2> /dev/null | sed -n 1p)"
 if ! xcodebuild -project App.xcodeproj -target App -configuration Release -sdk "$sdk" \
     SYMROOT="$PWD/build" "${arch_args[@]}" \
     CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \

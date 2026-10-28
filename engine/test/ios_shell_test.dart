@@ -25,6 +25,12 @@ void main() {
     await tmp.delete(recursive: true);
   });
 
+  test('APK / IPA file names stay Latin for GitHub release assets', () {
+    expect(BuildPipeline.latinFileBase('Bot Runner', 'com.example.bot'), 'Bot Runner');
+    expect(BuildPipeline.latinFileBase('Заметки', 'net.appbuilder.samples.notes'), 'notes');
+    expect(BuildPipeline.latinFileBase(null, 'com.my_company.shop_list'), 'shop-list');
+  });
+
   test('bundle id and version for iOS', () {
     expect(IosShellGenerator.bundleId('com.my_company.app_1'), 'com.my-company.app-1');
     expect(IosShellGenerator.shortVersion('2.10.3-beta'), '2.10.3');
