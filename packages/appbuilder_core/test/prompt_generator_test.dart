@@ -36,6 +36,17 @@ void main() {
     });
   }
 
+  test('technology of a configuration and platforms in the prompt', () {
+    expect(PromptTech.of(base), PromptTech.javascript);
+    expect(PromptTech.of(base.copyWith(appType: PromptAppType.nodeSpa, spaFramework: SpaFramework.vue)), PromptTech.vue);
+    expect(PromptTech.of(base.copyWith(appType: PromptAppType.flutter)), PromptTech.flutter);
+    expect(PromptTech.kotlin.iphone, isFalse);
+    expect(generator.generate(base.copyWith(appType: PromptAppType.nodeSpa)), contains('| Язык / технология | React (JavaScript) |'));
+    expect(generator.generate(base), contains('Android (APK) и iPhone (.ipa)'));
+    expect(generator.generate(base), contains('100dvh'));
+    expect(generator.generate(base.copyWith(appType: PromptAppType.nativeAndroid)), contains('| Платформы | Android (APK) |'));
+  });
+
   test('Flutter prompt: pubspec with verified packages, no platform folders', () {
     final prompt = generator.generate(base.copyWith(
       appType: PromptAppType.flutter,

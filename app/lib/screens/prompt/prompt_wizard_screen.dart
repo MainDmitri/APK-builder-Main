@@ -21,14 +21,16 @@ class PromptWizardScreen extends StatefulWidget {
 class _PromptWizardScreenState extends State<PromptWizardScreen> {
   int _step = 0;
 
-  static const _typeIcons = {
-    PromptAppType.utility: Icons.calculate_outlined,
-    PromptAppType.webService: Icons.public,
-    PromptAppType.game: Icons.sports_esports_outlined,
-    PromptAppType.nativeAndroid: Icons.android,
-    PromptAppType.nodeSpa: Icons.web,
-    PromptAppType.flutter: Icons.flutter_dash,
+  static const _techIcons = {
+    PromptTech.javascript: Icons.javascript,
+    PromptTech.react: Icons.web,
+    PromptTech.vue: Icons.web_asset,
+    PromptTech.flutter: Icons.flutter_dash,
+    PromptTech.kotlin: Icons.android,
   };
+
+  /// Kinds of HTML + JavaScript apps.
+  static const _webKinds = [PromptAppType.utility, PromptAppType.webService, PromptAppType.game];
 
   @override
   Widget build(BuildContext context) {
@@ -56,8 +58,8 @@ class _PromptWizardScreenState extends State<PromptWizardScreen> {
                   ),
             steps: [
               Step(
-                title: const Text('Тип приложения'),
-                subtitle: Text(c.appType.title),
+                title: const Text('Язык и тип приложения'),
+                subtitle: Text('${c.tech.title} · ${c.tech.platforms}'),
                 isActive: _step >= 0,
                 state: _step > 0 ? StepState.complete : StepState.indexed,
                 content: _typeStep(c),
@@ -87,48 +89,68 @@ class _PromptWizardScreenState extends State<PromptWizardScreen> {
   }
 
   Widget _typeStep(PromptController c) {
-    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final type in PromptAppType.values)
+        Text('На каком языке ИИ напишет приложение', style: theme.textTheme.labelLarge),
+        const SizedBox(height: 8),
+        for (final tech in PromptTech.values)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Card(
-              color: c.appType == type ? scheme.primaryContainer : null,
+              color: c.tech == tech ? scheme.primaryContainer : null,
               child: ListTile(
-                leading: Icon(_typeIcons[type]),
-                title: Text(type.title),
-                subtitle: Text(type.examples),
-                trailing: c.appType == type ? Icon(Icons.check_circle, color: scheme.primary) : null,
-                onTap: () => c.update((p) => p.appType = type),
+                leading: Icon(_techIcons[tech]),
+                title: Text(tech.title),
+                subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(tech.description),
+                  const SizedBox(height: 6),
+                  Wrap(spacing: 6, children: [
+                    _platformChip(Icons.android, 'Android'),
+                    if (tech.iphone) _platformChip(Icons.phone_iphone, 'iPhone'),
+                  ]),
+                ]),
+                trailing: c.tech == tech ? Icon(Icons.check_circle, color: scheme.primary) : null,
+                onTap: () => c.setTech(tech),
               ),
             ),
           ),
-        const SizedBox(height: 8),
-        ...switch (c.appType) {
-          PromptAppType.game => [
-              _label('Движок'),
-              _segmented<GameEngine>(GameEngine.values, c.gameEngine, (v) => c.update((p) => p.gameEngine = v), (v) => v.title),
+        ...switch (c.tech) {
+          PromptTech.javascript => [
+              _label('Что за приложение'),
+              _segmented<PromptAppType>(_webKinds, c.appType, (v) => c.update((p) => p.appType = v), (v) => v.title),
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(c.appType.examples, style: theme.textTheme.bodySmall),
+              ),
+              if (c.appType == PromptAppType.game) ...[
+                _label('Движок'),
+                _segmented<GameEngine>(GameEngine.values, c.gameEngine, (v) => c.update((p) => p.gameEngine = v), (v) => v.title),
+              ],
+              if (c.appType == PromptAppType.webService) ...[
+                _label('Режим'),
+                _segmented<WebServiceMode>(
+                    WebServiceMode.values, c.webServiceMode, (v) => c.update((p) => p.webServiceMode = v), (v) => v.title),
+              ],
             ],
-          PromptAppType.webService => [
-              _label('Режим'),
-              _segmented<WebServiceMode>(
-                  WebServiceMode.values, c.webServiceMode, (v) => c.update((p) => p.webServiceMode = v), (v) => v.title),
-            ],
-          PromptAppType.nodeSpa => [
-              _label('Стек'),
-              _segmented<SpaFramework>(SpaFramework.values, c.spaFramework, (v) => c.update((p) => p.spaFramework = v), (v) => v.title),
-            ],
-          PromptAppType.nativeAndroid => [
+          PromptTech.kotlin => [
               _label('Интерфейс'),
               _segmented<NativeUi>(NativeUi.values, c.nativeUi, (v) => c.update((p) => p.nativeUi = v), (v) => v.title),
             ],
-          PromptAppType.utility || PromptAppType.flutter => const <Widget>[],
+          PromptTech.react || PromptTech.vue || PromptTech.flutter => const <Widget>[],
         },
       ],
     );
   }
+
+  Widget _platformChip(IconData icon, String label) => Chip(
+        avatar: Icon(icon, size: 16),
+        label: Text(label),
+        visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      );
 
   Widget _ideaStep(PromptController c) {
     final needsUrl = c.appType == PromptAppType.webService;

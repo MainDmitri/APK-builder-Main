@@ -53,6 +53,28 @@ class PromptController extends ChangeNotifier {
         includeFullContract: includeFullContract,
       );
 
+  /// Language / technology the AI writes the app in.
+  PromptTech get tech => PromptTech.of(config);
+
+  void setTech(PromptTech value) => update((c) {
+        switch (value) {
+          case PromptTech.javascript:
+            if (!c.appType.usesWebView || c.appType == PromptAppType.nodeSpa) c.appType = PromptAppType.utility;
+          case PromptTech.react:
+            c
+              ..appType = PromptAppType.nodeSpa
+              ..spaFramework = SpaFramework.react;
+          case PromptTech.vue:
+            c
+              ..appType = PromptAppType.nodeSpa
+              ..spaFramework = SpaFramework.vue;
+          case PromptTech.flutter:
+            c.appType = PromptAppType.flutter;
+          case PromptTech.kotlin:
+            c.appType = PromptAppType.nativeAndroid;
+        }
+      });
+
   List<String> get errors => generator.validate(config);
 
   String generate() => generator.generate(config);

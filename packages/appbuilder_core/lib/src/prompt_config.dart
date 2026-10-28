@@ -21,6 +21,34 @@ enum PromptAppType {
   bool get usesWebView => !isNative && !isFlutter;
 }
 
+/// Language / technology the AI writes the app in (first choice of the
+/// prompt wizard). Maps onto [PromptAppType] and [SpaFramework].
+enum PromptTech {
+  javascript('HTML + JavaScript', 'Без сборки: утилиты, клиенты сайтов и API, игры на Canvas / Phaser / Three.js',
+      iphone: true),
+  react('React (JavaScript)', 'React 19 + Vite + Tailwind CSS: сложные интерфейсы, много экранов', iphone: true),
+  vue('Vue (JavaScript)', 'Vue 3 + Vite + Tailwind CSS: сложные интерфейсы, много экранов', iphone: true),
+  flutter('Flutter (Dart)', 'Нативное приложение: один код, быстрый интерфейс, плагины', iphone: true),
+  kotlin('Kotlin', 'Нативный Android: Jetpack Compose или XML-разметка, полный доступ к Android API', iphone: false);
+
+  const PromptTech(this.title, this.description, {required this.iphone});
+
+  final String title;
+  final String description;
+
+  /// Can also be built as an .ipa for iPhone.
+  final bool iphone;
+
+  String get platforms => iphone ? 'Android и iPhone' : 'только Android';
+
+  static PromptTech of(PromptConfig c) => switch (c.appType) {
+        PromptAppType.nodeSpa => c.spaFramework == SpaFramework.react ? react : vue,
+        PromptAppType.flutter => flutter,
+        PromptAppType.nativeAndroid => kotlin,
+        PromptAppType.utility || PromptAppType.webService || PromptAppType.game => javascript,
+      };
+}
+
 enum GameEngine {
   canvas('Чистый Canvas 2D (без сборки)'),
   phaser('Phaser 3 + Vite'),

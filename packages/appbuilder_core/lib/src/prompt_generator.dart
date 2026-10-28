@@ -57,6 +57,9 @@ class PromptGenerator {
     b.writeln('| Хранение данных | ${_storageTitle(c)} |');
     b.writeln('| Язык интерфейса | ${c.uiLanguage.title} |');
     b.writeln('| Основной цвет | ${c.themeColor} |');
+    final tech = PromptTech.of(c);
+    b.writeln('| Язык / технология | ${tech.title} |');
+    b.writeln('| Платформы | ${tech.iphone ? 'Android (APK) и iPhone (.ipa)' : 'Android (APK)'} |');
     b.writeln('| Тип проекта сборщика | $profile |');
     if (c.needsRemoteUrl) {
       b.writeln('| ${c.webServiceMode == WebServiceMode.remoteSite ? 'Сайт' : 'Базовый URL API'} | ${c.remoteUrl.trim()} |');
@@ -190,6 +193,9 @@ class PromptGenerator {
         'Сохранение файла пользователю: `<a href="blob:…" download="имя.ext">` (оболочка сохранит в «Загрузки»); '
             'выбор файла: `<input type="file">`.',
         'Подключи манифест: `<link rel="manifest" href="./manifest.json">`.',
+        'Тот же код собирается и для iPhone (WKWebView, iOS 15+): перед вызовом проверяй наличие `navigator.vibrate` '
+            'и `window.AppBuilderAndroid`, не полагайся на Service Worker; `font-size` полей ввода ≥ 16px (иначе iOS '
+            'увеличивает страницу), высота экрана — `100dvh`, а не `100vh`.',
       ];
 
   List<String> _webStorageRules(PromptConfig c) => switch (c.storage) {

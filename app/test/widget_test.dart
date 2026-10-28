@@ -43,7 +43,8 @@ void main() {
     await tester.tap(find.text('Промпты'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Нативный Android-проект'));
+    expect(find.text('Flutter (Dart)'), findsOneWidget);
+    await tester.tap(find.text('Kotlin'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Далее').first);
     await tester.pumpAndSettle();
