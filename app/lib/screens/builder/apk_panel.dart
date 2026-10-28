@@ -60,41 +60,7 @@ class ApkPanel extends StatelessWidget {
       case TransferPhase.queued:
       case TransferPhase.downloading:
       case TransferPhase.paused:
-        final paused = job.phase == TransferPhase.paused;
-        final percent = job.fraction == null ? '' : '${(job.fraction! * 100).floor()}%';
-        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Row(children: [
-            Expanded(
-              child: Text(
-                job.phase == TransferPhase.queued ? 'Подготовка загрузки…' : (paused ? 'Пауза' : 'Скачивание APK'),
-                style: theme.textTheme.titleSmall,
-              ),
-            ),
-            Text(percent, style: theme.textTheme.titleSmall?.copyWith(fontFeatures: const [FontFeature.tabularFigures()])),
-          ]),
-          const SizedBox(height: 10),
-          GradientProgressBar(
-            value: job.phase == TransferPhase.queued ? null : job.fraction,
-            color: paused ? AppColors.warning : null,
-          ),
-          const SizedBox(height: 8),
-          Row(children: [
-            Expanded(
-              child: Text(
-                [
-                  job.total == null ? formatBytes(job.received) : '${formatBytes(job.received)} из ${formatBytes(job.total!)}',
-                  if (job.speed > 0 && !paused) '${formatBytes(job.speed)}/с',
-                  if (job.remaining case final r?) 'осталось ${_short(r)}',
-                ].join(' · '),
-                style: muted,
-              ),
-            ),
-            TextButton(onPressed: () => d.cancel(buildId), child: const Text('Отменить')),
-          ]),
-          if (paused && job.message != null) Text(job.message!, style: muted?.copyWith(color: AppColors.warning)),
-          if (d.canInstall)
-            Text('Загрузка продолжится в фоне, даже если свернуть AppBuilder.', style: muted),
-        ]);
+        return DownloadProgressView(job: job, onCancel: () => d.cancel(buildId), backgroundHint: d.canInstall);
       case TransferPhase.failed:
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           NoticeBox(text: job.message ?? 'Не удалось скачать APK.', color: theme.colorScheme.error, icon: Icons.error_outline),
@@ -219,5 +185,57 @@ class ApkPanel extends StatelessWidget {
     ]);
   }
 
+}
+
+/// Progress of a running download: percent, bytes, speed, time left.
+class DownloadProgressView extends StatelessWidget {
+  const DownloadProgressView({super.key, required this.job, required this.onCancel, required this.backgroundHint});
+
+  final ApkJob job;
+  final VoidCallback onCancel;
+
+  /// Android: the system downloader keeps going in the background.
+  final bool backgroundHint;
+
   static String _short(Duration d) => d.inSeconds < 60 ? '${d.inSeconds} с' : '${d.inMinutes} мин ${d.inSeconds % 60} с';
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+    final paused = job.phase == TransferPhase.paused;
+    final percent = job.fraction == null ? '' : '${(job.fraction! * 100).floor()}%';
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        Expanded(
+          child: Text(
+            job.phase == TransferPhase.queued ? 'Подготовка загрузки…' : (paused ? 'Пауза' : 'Скачивание ${job.kind.label}'),
+            style: theme.textTheme.titleSmall,
+          ),
+        ),
+        Text(percent, style: theme.textTheme.titleSmall?.copyWith(fontFeatures: const [FontFeature.tabularFigures()])),
+      ]),
+      const SizedBox(height: 10),
+      GradientProgressBar(
+        value: job.phase == TransferPhase.queued ? null : job.fraction,
+        color: paused ? AppColors.warning : null,
+      ),
+      const SizedBox(height: 8),
+      Row(children: [
+        Expanded(
+          child: Text(
+            [
+              job.total == null ? formatBytes(job.received) : '${formatBytes(job.received)} из ${formatBytes(job.total!)}',
+              if (job.speed > 0 && !paused) '${formatBytes(job.speed)}/с',
+              if (job.remaining case final r?) 'осталось ${_short(r)}',
+            ].join(' · '),
+            style: muted,
+          ),
+        ),
+        TextButton(onPressed: onCancel, child: const Text('Отменить')),
+      ]),
+      if (paused && job.message != null) Text(job.message!, style: muted?.copyWith(color: AppColors.warning)),
+      if (backgroundHint) Text('Загрузка продолжится в фоне, даже если свернуть AppBuilder.', style: muted),
+    ]);
+  }
 }

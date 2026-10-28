@@ -10,7 +10,7 @@ import 'install_messages.dart';
 import 'native_bridge.dart';
 import 'transfer_models.dart';
 
-/// Downloads and installs APKs.
+/// Downloads build files (APK, IPA) and installs APKs.
 ///
 /// Android: the system DownloadManager (continues in the background, resumes
 /// after network loss, progress notification) and PackageInstaller sessions.
@@ -36,7 +36,7 @@ class ApkStore {
 
   bool get canInstall => bridge.available;
 
-  Stream<TransferUpdate> download(ApkSource source, String buildId) =>
+  Stream<TransferUpdate> download(ArtifactSource source, String buildId) =>
       bridge.available ? _downloadSystem(source, buildId) : _downloadHttp(source, buildId);
 
   Future<void> cancel(String buildId) async {
@@ -70,7 +70,7 @@ class ApkStore {
     }
   }
 
-  Stream<TransferUpdate> _downloadSystem(ApkSource source, String buildId) async* {
+  Stream<TransferUpdate> _downloadSystem(ArtifactSource source, String buildId) async* {
     final root = await bridge.downloadsDir();
     final relative = 'apk/$buildId/${_safeName(source.fileName)}';
     final file = File('$root/$relative');
@@ -85,6 +85,7 @@ class ApkStore {
       headers: source.headers,
       relativePath: relative,
       title: source.fileName,
+      mimeType: source.kind.mimeType,
       tag: 'AppBuilder · сборка $buildId',
     );
     _systemDownloads[buildId] = id;
@@ -120,7 +121,7 @@ class ApkStore {
     }
   }
 
-  Stream<TransferUpdate> _downloadHttp(ApkSource source, String buildId) async* {
+  Stream<TransferUpdate> _downloadHttp(ArtifactSource source, String buildId) async* {
     final root = Directory('${(await storageDir()).path}/apk');
     _prune(root, buildId);
     final file = File('${root.path}/$buildId/${_safeName(source.fileName)}');

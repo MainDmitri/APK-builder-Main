@@ -10,6 +10,7 @@ import '../../widgets/motion.dart';
 import '../../widgets/section_card.dart';
 import 'build_progress.dart';
 import 'icon_section.dart';
+import 'ios_section.dart';
 import 'signing_section.dart';
 
 /// ZIP → analysis → parameters → signing → remote build → APK.
@@ -24,7 +25,7 @@ class BuildScreen extends StatelessWidget {
     final backend = context.watch<BuildBackend?>();
     final settings = context.watch<SettingsController>();
     final problems = c.readinessErrors(backend);
-    final ready = problems.isEmpty && !c.submitting && !c.buildRunning && !c.analyzing;
+    final ready = problems.isEmpty && !c.busy && !c.analyzing;
 
     var order = 0;
     Widget entry(Widget child) => FadeSlideIn(delay: Duration(milliseconds: 70 * order++), child: child);
@@ -49,13 +50,17 @@ class BuildScreen extends StatelessWidget {
                 const SizedBox(height: 16),
                 const FadeSlideIn(delay: Duration(milliseconds: 70), child: IconSection()),
                 const SizedBox(height: 16),
-                FadeSlideIn(delay: const Duration(milliseconds: 140), child: SigningSection(backend: backend)),
+                FadeSlideIn(delay: const Duration(milliseconds: 140), child: IosSection(backend: backend)),
+                const SizedBox(height: 16),
+                FadeSlideIn(delay: const Duration(milliseconds: 210), child: SigningSection(backend: backend)),
               ],
               const SizedBox(height: 20),
               entry(GradientButton(
-                label: c.submitting ? 'Отправка проекта…' : (c.buildRunning ? 'Идёт сборка…' : 'Собрать APK'),
+                label: c.submitting
+                    ? 'Отправка проекта…'
+                    : (c.buildRunning ? 'Идёт сборка…' : (c.iosPending ? 'Собирается версия для iPhone…' : 'Собрать APK')),
                 icon: Icons.rocket_launch_rounded,
-                loading: c.submitting || c.buildRunning,
+                loading: c.busy,
                 onPressed: ready ? () => c.startBuild(backend!) : null,
               )),
               if (problems.isNotEmpty && c.project != null) ...[
@@ -177,7 +182,7 @@ class _ProjectSection extends StatelessWidget {
               subtitle: Text(formatBytes(project.bytes.length)),
             ),
           OutlinedButton.icon(
-            onPressed: c.analyzing || c.buildRunning ? null : c.pickProject,
+            onPressed: c.analyzing || c.busy ? null : c.pickProject,
             icon: const Icon(Icons.upload_file),
             label: Text(project == null ? 'Выбрать ZIP' : 'Выбрать другой ZIP'),
           ),

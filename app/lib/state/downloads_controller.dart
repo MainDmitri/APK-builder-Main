@@ -8,11 +8,12 @@ import '../services/file_service.dart';
 import '../services/transfer/apk_store.dart';
 import '../services/transfer/transfer_models.dart';
 
-/// Download and installation state of the APK of one build.
+/// Download (and, for an APK, installation) state of one file of a build.
 class ApkJob {
-  ApkJob(this.buildId);
+  ApkJob(this.buildId, this.kind);
 
   final String buildId;
+  final ArtifactKind kind;
   String? fileName;
   TransferPhase phase = TransferPhase.queued;
   int received = 0;
@@ -75,7 +76,7 @@ class ApkJob {
   }
 }
 
-/// APK downloads and installs of all builds (current build and history).
+/// APK / IPA downloads and APK installs of all builds (current build and history).
 class DownloadsController extends ChangeNotifier with WidgetsBindingObserver {
   DownloadsController({ApkStore? store, this.files = const FileService()}) : store = store ?? ApkStore() {
     WidgetsBinding.instance.addObserver(this);
@@ -90,27 +91,37 @@ class DownloadsController extends ChangeNotifier with WidgetsBindingObserver {
 
   bool get canInstall => store.canInstall;
 
-  ApkJob? job(String buildId) => _jobs[buildId];
+  /// Downloads of the APK use the build id as key, IPAs `<id>.ipa`.
+  static String _key(String buildId, ArtifactKind kind) => kind == ArtifactKind.apk ? buildId : '$buildId.${kind.name}';
 
-  /// Starts (or resumes) the download of a successful build's APK.
-  /// With [thenInstall] the installer opens as soon as the file is ready.
-  Future<void> download(BuildBackend backend, String buildId, {bool thenInstall = false}) async {
-    if (thenInstall) _installWhenReady.add(buildId);
-    final existing = _jobs[buildId];
+  ApkJob? job(String buildId, {ArtifactKind kind = ArtifactKind.apk}) => _jobs[_key(buildId, kind)];
+
+  /// Starts (or resumes) the download of a successful build's APK or IPA.
+  /// With [thenInstall] the APK installer opens as soon as the file is ready.
+  Future<void> download(
+    BuildBackend backend,
+    String buildId, {
+    bool thenInstall = false,
+    ArtifactKind kind = ArtifactKind.apk,
+  }) async {
+    final key = _key(buildId, kind);
+    final install = thenInstall && kind == ArtifactKind.apk;
+    if (install) _installWhenReady.add(key);
+    final existing = _jobs[key];
     if (existing != null && (existing.active || existing.downloaded)) {
-      if (existing.downloaded && thenInstall) await install(buildId);
+      if (existing.downloaded && install) await this.install(buildId);
       return;
     }
-    final job = _jobs[buildId] = ApkJob(buildId);
+    final job = _jobs[key] = ApkJob(buildId, kind);
     notifyListeners();
-    final ApkSource source;
+    final ArtifactSource source;
     try {
-      source = await backend.apkSource(buildId);
+      source = await backend.artifactSource(buildId, kind);
     } on BackendException catch (e) {
       job
         ..phase = TransferPhase.failed
         ..message = e.message;
-      _installWhenReady.remove(buildId);
+      _installWhenReady.remove(key);
       notifyListeners();
       return;
     }
@@ -118,29 +129,30 @@ class DownloadsController extends ChangeNotifier with WidgetsBindingObserver {
       ..fileName = source.fileName
       ..total = source.size;
     notifyListeners();
-    _downloads[buildId] = store.download(source, buildId).listen(
+    _downloads[key] = store.download(source, key).listen(
       (update) {
         job._apply(update);
         notifyListeners();
-        if (update.phase == TransferPhase.done && _installWhenReady.remove(buildId)) unawaited(install(buildId));
-        if (update.phase == TransferPhase.failed) _installWhenReady.remove(buildId);
+        if (update.phase == TransferPhase.done && _installWhenReady.remove(key)) unawaited(this.install(buildId));
+        if (update.phase == TransferPhase.failed) _installWhenReady.remove(key);
       },
       onError: (Object e) {
         job
           ..phase = TransferPhase.failed
           ..message = '$e';
-        _installWhenReady.remove(buildId);
+        _installWhenReady.remove(key);
         notifyListeners();
       },
-      onDone: () => _downloads.remove(buildId),
+      onDone: () => _downloads.remove(key),
     );
   }
 
-  Future<void> cancel(String buildId) async {
-    _installWhenReady.remove(buildId);
-    await _downloads.remove(buildId)?.cancel();
-    await store.cancel(buildId);
-    _jobs.remove(buildId);
+  Future<void> cancel(String buildId, {ArtifactKind kind = ArtifactKind.apk}) async {
+    final key = _key(buildId, kind);
+    _installWhenReady.remove(key);
+    await _downloads.remove(key)?.cancel();
+    await store.cancel(key);
+    _jobs.remove(key);
     notifyListeners();
   }
 
@@ -176,13 +188,14 @@ class DownloadsController extends ChangeNotifier with WidgetsBindingObserver {
     );
   }
 
-  /// Saves the APK through the system "save as" dialog.
-  Future<String> save(String buildId) async {
-    final job = _jobs[buildId];
-    if (job == null || !job.downloaded) return 'APK ещё не скачан.';
-    final Uint8List bytes = await store.read(buildId, job.path);
-    final location = await files.save(job.fileName ?? 'app.apk', bytes, mimeType: 'application/vnd.android.package-archive');
-    return location == null ? 'Сохранение отменено' : 'APK сохранён: $location';
+  /// Saves the APK / IPA through the system "save as" dialog.
+  Future<String> save(String buildId, {ArtifactKind kind = ArtifactKind.apk}) async {
+    final key = _key(buildId, kind);
+    final job = _jobs[key];
+    if (job == null || !job.downloaded) return '${kind.label} ещё не скачан.';
+    final Uint8List bytes = await store.read(key, job.path);
+    final location = await files.save(job.fileName ?? 'app.${kind.name}', bytes, mimeType: kind.mimeType);
+    return location == null ? 'Сохранение отменено' : '${kind.label} сохранён: $location';
   }
 
   /// Launches the installed app. Returns false if Android has no launcher entry.

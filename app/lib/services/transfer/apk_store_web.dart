@@ -17,7 +17,7 @@ class ApkStore {
 
   bool get canInstall => false;
 
-  Stream<TransferUpdate> download(ApkSource source, String buildId) async* {
+  Stream<TransferUpdate> download(ArtifactSource source, String buildId) async* {
     final cached = _files[buildId];
     if (cached != null) {
       yield TransferUpdate(TransferPhase.done, received: cached.length, total: cached.length);

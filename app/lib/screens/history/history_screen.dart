@@ -7,6 +7,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/motion.dart';
 import '../../widgets/section_card.dart';
 import '../builder/apk_panel.dart';
+import '../builder/ipa_panel.dart';
 
 /// Builds known to the current backend (engine history / GitHub releases)
 /// with download and install of each APK.
@@ -108,6 +109,8 @@ class _BuildCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final ok = summary.state == RemoteBuildState.succeeded;
+    final ipa = summary.ipaFileName;
+    final expandable = ok || ipa != null;
     final (IconData icon, Color color) = switch (summary.state) {
       RemoteBuildState.succeeded => (Icons.check_circle_rounded, AppColors.success),
       RemoteBuildState.failed => (Icons.error_rounded, theme.colorScheme.error),
@@ -118,11 +121,12 @@ class _BuildCard extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         ListTile(
           contentPadding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
-          onTap: ok ? onToggle : null,
+          onTap: expandable ? onToggle : null,
           leading: Icon(icon, color: color, size: 30),
           title: Text(summary.title, style: const TextStyle(fontWeight: FontWeight.w700)),
           subtitle: Text('${MaterialLocalizations.of(context).formatShortDate(summary.createdAt)} '
-              '${TimeOfDay.fromDateTime(summary.createdAt).format(context)} · ${summary.apkFileName ?? summary.id}'),
+              '${TimeOfDay.fromDateTime(summary.createdAt).format(context)} · ${summary.apkFileName ?? summary.id}'
+              '${ipa != null ? ' + iPhone' : ''}'),
           trailing: Row(mainAxisSize: MainAxisSize.min, children: [
             if (summary.detailsUrl != null)
               IconButton(
@@ -130,7 +134,7 @@ class _BuildCard extends StatelessWidget {
                 icon: const Icon(Icons.open_in_new),
                 onPressed: () => launchUrl(Uri.parse(summary.detailsUrl!), mode: LaunchMode.externalApplication),
               ),
-            if (ok)
+            if (expandable)
               AnimatedRotation(
                 turns: expanded ? 0.5 : 0,
                 duration: const Duration(milliseconds: 250),
@@ -142,10 +146,19 @@ class _BuildCard extends StatelessWidget {
           duration: const Duration(milliseconds: 280),
           curve: Curves.easeOutCubic,
           alignment: Alignment.topCenter,
-          child: ok && expanded
+          child: expandable && expanded
               ? Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                  child: ApkPanel(backend: backend, buildId: summary.id, compact: true),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    if (ok) ApkPanel(backend: backend, buildId: summary.id, compact: true),
+                    if (ok && ipa != null) const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider()),
+                    if (ipa != null)
+                      IpaPanel(
+                        backend: backend,
+                        buildId: summary.id,
+                        info: IosBuildInfo(state: IosBuildState.succeeded, fileName: ipa),
+                      ),
+                  ]),
                 )
               : const SizedBox(width: double.infinity),
         ),

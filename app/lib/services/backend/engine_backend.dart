@@ -26,6 +26,9 @@ class EngineBackend implements BuildBackend {
   bool get supportsKeystoreUpload => true;
 
   @override
+  bool get supportsIos => false;
+
+  @override
   Duration get pollInterval => const Duration(seconds: 2);
 
   Uri _uri(String path, [Map<String, String>? query]) =>
@@ -161,10 +164,11 @@ class EngineBackend implements BuildBackend {
   }
 
   @override
-  Future<ApkSource> apkSource(String id) async {
+  Future<ArtifactSource> artifactSource(String id, ArtifactKind kind) async {
+    if (kind != ArtifactKind.apk) throw BackendException('Сервер AppBuilder Engine собирает только APK.');
     final status = await this.status(id, logFrom: 1 << 30);
     if (status.state != RemoteBuildState.succeeded) throw BackendException('Сборка $id не завершилась успешно.');
-    return ApkSource(
+    return ArtifactSource(
       url: _uri('/api/builds/$id/apk'),
       fileName: status.apkFileName ?? 'app.apk',
       headers: _headers,

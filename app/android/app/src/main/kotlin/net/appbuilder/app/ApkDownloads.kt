@@ -7,7 +7,7 @@ import android.os.Environment
 import java.io.File
 
 /**
- * APK downloads through the system DownloadManager: they continue when the
+ * Build files (APK, IPA) downloaded through the system DownloadManager: they continue when the
  * app is in the background or closed, resume after network loss and show a
  * progress notification. Files land in the app-specific external directory
  * (no storage permission needed).
@@ -29,6 +29,7 @@ object ApkDownloads {
         headers: Map<String, String>,
         relativePath: String,
         title: String,
+        mimeType: String,
         tag: String,
     ): Long {
         val dm = manager(context)
@@ -39,7 +40,7 @@ object ApkDownloads {
         val request = DownloadManager.Request(Uri.parse(url))
             .setTitle(title)
             .setDescription(tag)
-            .setMimeType("application/vnd.android.package-archive")
+            .setMimeType(mimeType)
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, relativePath)
             .setAllowedOverMetered(true)

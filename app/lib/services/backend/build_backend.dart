@@ -71,6 +71,7 @@ class BuildSubmission {
     this.keystore,
     this.icon,
     this.iconFileName,
+    this.ios = false,
   });
 
   final Uint8List projectZip;
@@ -82,6 +83,9 @@ class BuildSubmission {
   final Uint8List? icon;
   final String? iconFileName;
 
+  /// Also build an unsigned .ipa for iPhone (GitHub Actions, web projects).
+  final bool ios;
+
   /// `icon.png` / `icon.jpg` / `icon.webp` for the uploaded picture.
   String get iconUploadName {
     final name = (iconFileName ?? '').toLowerCase();
@@ -91,6 +95,18 @@ class BuildSubmission {
 }
 
 enum RemoteBuildState { queued, running, succeeded, failed }
+
+enum IosBuildState { pending, succeeded, failed }
+
+/// The iPhone part of a build (unsigned .ipa compiled on macOS).
+class IosBuildInfo {
+  const IosBuildInfo({required this.state, this.fileName, this.size, this.error});
+
+  final IosBuildState state;
+  final String? fileName;
+  final int? size;
+  final String? error;
+}
 
 class RemoteBuildStatus {
   const RemoteBuildStatus({
@@ -108,6 +124,7 @@ class RemoteBuildStatus {
     this.warnings = const [],
     this.detailsUrl,
     this.queuePosition,
+    this.ios,
   });
 
   final RemoteBuildState state;
@@ -133,7 +150,13 @@ class RemoteBuildStatus {
   final String? detailsUrl;
   final int? queuePosition;
 
+  /// Present when the build also produces an .ipa for iPhone.
+  final IosBuildInfo? ios;
+
+  /// The APK part is done.
   bool get isFinished => state == RemoteBuildState.succeeded || state == RemoteBuildState.failed;
+
+  bool get iosPending => ios?.state == IosBuildState.pending;
 }
 
 class RemoteBuildSummary {
@@ -143,6 +166,7 @@ class RemoteBuildSummary {
     required this.title,
     required this.createdAt,
     this.apkFileName,
+    this.ipaFileName,
     this.detailsUrl,
   });
 
@@ -151,15 +175,34 @@ class RemoteBuildSummary {
   final String title;
   final DateTime createdAt;
   final String? apkFileName;
+  final String? ipaFileName;
   final String? detailsUrl;
 }
 
-/// Where the APK of a finished build is downloaded from.
-class ApkSource {
-  const ApkSource({required this.url, required this.fileName, this.headers = const {}, this.size});
+/// Files a build produces.
+enum ArtifactKind {
+  apk('application/vnd.android.package-archive', 'APK'),
+  ipa('application/octet-stream', 'IPA');
+
+  const ArtifactKind(this.mimeType, this.label);
+
+  final String mimeType;
+  final String label;
+}
+
+/// Where a file of a finished build is downloaded from.
+class ArtifactSource {
+  const ArtifactSource({
+    required this.url,
+    required this.fileName,
+    this.headers = const {},
+    this.size,
+    this.kind = ArtifactKind.apk,
+  });
 
   final Uri url;
   final String fileName;
+  final ArtifactKind kind;
 
   /// Request headers (authorization of a self-hosted engine).
   final Map<String, String> headers;
@@ -176,6 +219,9 @@ abstract interface class BuildBackend {
   /// secrets (GitHub).
   bool get supportsKeystoreUpload;
 
+  /// iPhone builds need macOS: available with GitHub Actions only.
+  bool get supportsIos;
+
   /// Recommended polling interval for [status].
   Duration get pollInterval;
 
@@ -188,8 +234,8 @@ abstract interface class BuildBackend {
 
   Future<RemoteBuildStatus> status(String id, {int logFrom = 0});
 
-  /// Download address of the APK of a successful build.
-  Future<ApkSource> apkSource(String id);
+  /// Download address of the APK or IPA of a successful build.
+  Future<ArtifactSource> artifactSource(String id, ArtifactKind kind);
 
   Future<List<RemoteBuildSummary>> history();
 

@@ -82,10 +82,28 @@ class BuildController extends ChangeNotifier {
   DateTime? finishedAt;
   Timer? _poll;
   bool _polling = false;
+  bool _apkHandled = false;
+
+  /// Also build an .ipa for iPhone (GitHub Actions, web projects).
+  bool buildIos = false;
 
   bool get isNativeGradle => analysis?.kind == ProjectKind.nativeGradle;
   bool get isWeb => analysis?.kind.isWeb ?? false;
   bool get buildRunning => buildId != null && !(status?.isFinished ?? false) && buildError == null;
+
+  /// The APK is done but the .ipa is still being built on macOS.
+  bool get iosPending => buildError == null && (status?.iosPending ?? false);
+
+  /// No new build can start: submission, APK or IPA in progress.
+  bool get busy => submitting || buildRunning || iosPending;
+
+  /// iPhone builds: GitHub Actions (macOS) and web projects only.
+  bool iosAvailable(BuildBackend? backend) => (backend?.supportsIos ?? false) && isWeb;
+
+  void setBuildIos(bool value) {
+    buildIos = value;
+    notifyListeners();
+  }
 
   /// Gradle projects keep their own launcher icon.
   bool get iconSupported => analysis != null && analysis!.canBuild && !isNativeGradle;
@@ -282,6 +300,7 @@ class BuildController extends ChangeNotifier {
     submitting = true;
     startedAt = DateTime.now();
     finishedAt = null;
+    _apkHandled = false;
     notifyListeners();
     try {
       final chosenIcon = iconSupported ? icon : null;
@@ -292,6 +311,7 @@ class BuildController extends ChangeNotifier {
         keystore: signing == SigningMode.keystore ? _keystoreInput : null,
         icon: chosenIcon?.bytes,
         iconFileName: chosenIcon?.name,
+        ios: buildIos && iosAvailable(backend),
       ));
       log.add('Сборка $buildId отправлена (${backend.mode.title}).');
       await bridge.requestNotifications();
@@ -318,16 +338,23 @@ class BuildController extends ChangeNotifier {
       if (log.length > 3000) log.removeRange(0, log.length - 3000);
       _logIndex = next.nextLogIndex;
       status = next;
-      if (next.isFinished) {
+      if (next.isFinished && !_apkHandled) {
+        _apkHandled = true;
+        // The APK is downloaded at once, even while the .ipa is still building.
+        if (next.state == RemoteBuildState.succeeded) await downloads?.download(backend, id);
+      }
+      if (next.isFinished && !next.iosPending) {
         _stopPolling();
         finishedAt = DateTime.now();
-        await _finished(backend, id, next);
+        await _finished(next);
       } else {
         final progress = stageProgress;
         await bridge.watchUpdate(
           _title,
-          next.queuePosition != null ? 'В очереди, позиция ${next.queuePosition}' : (next.stageTitle ?? 'Сборка…'),
-          progress: progress == null ? null : (progress * 100).round(),
+          next.isFinished
+              ? 'APK готов — собирается версия для iPhone (macOS)…'
+              : (next.queuePosition != null ? 'В очереди, позиция ${next.queuePosition}' : (next.stageTitle ?? 'Сборка…')),
+          progress: next.isFinished || progress == null ? null : (progress * 100).round(),
         );
       }
     } on BackendException catch (e) {
@@ -339,13 +366,16 @@ class BuildController extends ChangeNotifier {
     }
   }
 
-  Future<void> _finished(BuildBackend backend, String id, RemoteBuildStatus result) async {
-    if (result.state == RemoteBuildState.succeeded) {
-      // The system download notification takes over from here.
-      await bridge.watchStop();
-      await downloads?.download(backend, id);
-    } else {
+  Future<void> _finished(RemoteBuildStatus result) async {
+    if (result.state != RemoteBuildState.succeeded) {
       await bridge.watchStop(title: 'Ошибка сборки', text: result.error ?? 'Подробности — в журнале сборки.');
+    } else if (result.ios?.state == IosBuildState.failed) {
+      await bridge.watchStop(title: 'APK готов, iPhone — ошибка', text: result.ios!.error ?? 'Подробности — в ios-build.log релиза.');
+    } else if (result.ios?.state == IosBuildState.succeeded) {
+      await bridge.watchStop(title: 'Сборка готова', text: 'APK и .ipa для iPhone готовы — откройте AppBuilder.');
+    } else {
+      // The system download notification of the APK takes over from here.
+      await bridge.watchStop();
     }
   }
 

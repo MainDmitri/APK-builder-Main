@@ -61,13 +61,13 @@ class IconSection extends StatelessWidget {
             const SizedBox(height: 12),
             Wrap(spacing: 8, runSpacing: 8, children: [
               OutlinedButton.icon(
-                onPressed: c.buildRunning ? null : c.pickIcon,
+                onPressed: c.busy ? null : c.pickIcon,
                 icon: const Icon(Icons.add_photo_alternate_outlined),
                 label: Text(c.icon == null ? 'Выбрать картинку' : 'Заменить'),
               ),
               if (c.icon != null)
                 TextButton.icon(
-                  onPressed: c.buildRunning ? null : c.clearIcon,
+                  onPressed: c.busy ? null : c.clearIcon,
                   icon: const Icon(Icons.close),
                   label: const Text('Убрать'),
                 ),

@@ -76,6 +76,7 @@ class MainActivity : FlutterActivity() {
                     headers = call.argument<Map<String, String>>("headers") ?: emptyMap(),
                     relativePath = call.argument<String>("relativePath")!!,
                     title = call.argument<String>("title") ?: "APK",
+                    mimeType = call.argument<String>("mimeType") ?: "application/vnd.android.package-archive",
                     tag = call.argument<String>("tag")!!,
                 )
             )

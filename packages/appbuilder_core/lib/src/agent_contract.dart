@@ -183,6 +183,12 @@ appbuilder.json         ← рекомендуется
 Не поддерживаются: Web Notifications и Push API, Web Bluetooth/USB/NFC, Payment Request, всплывающие окна
 `window.open` (ссылка откроется в браузере), фоновая синхронизация.
 
+**iPhone (по желанию пользователя).** Тот же веб-проект (профили A и B) может дополнительно собираться в
+неподписанный `.ipa` с оболочкой WKWebView (iOS 15+, origin `appbuilder://app/`, localStorage и IndexedDB
+работают). Отличия от Android: нет `navigator.vibrate` и `window.AppBuilderAndroid` (проверяй их наличие),
+скачанные файлы открываются системным меню «Поделиться», Service Worker не работает. Код, который должен
+работать и на iPhone, не должен полагаться на эти API.
+
 ### 4.3 manifest.json
 
 ```json

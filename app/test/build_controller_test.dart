@@ -29,6 +29,9 @@ class _ScriptedBackend implements BuildBackend {
   bool get supportsKeystoreUpload => true;
 
   @override
+  bool get supportsIos => true;
+
+  @override
   Duration get pollInterval => const Duration(milliseconds: 5);
 
   @override
@@ -47,6 +50,7 @@ class _ScriptedBackend implements BuildBackend {
   @override
   Future<RemoteBuildStatus> status(String id, {int logFrom = 0}) async {
     calls++;
+    final ios = submitted?.ios ?? false;
     if (calls < 3) {
       return RemoteBuildStatus(
         state: RemoteBuildState.running,
@@ -55,6 +59,7 @@ class _ScriptedBackend implements BuildBackend {
         currentStage: 1,
         logLines: ['line $calls'],
         nextLogIndex: logFrom + 1,
+        ios: ios ? const IosBuildInfo(state: IosBuildState.pending) : null,
       );
     }
     return RemoteBuildStatus(
@@ -62,12 +67,23 @@ class _ScriptedBackend implements BuildBackend {
       apkFileName: 'Notes-1.0.0.apk',
       apkSize: apkSize,
       nextLogIndex: logFrom,
+      // The .ipa is ready a few polls after the APK.
+      ios: !ios
+          ? null
+          : calls < 8
+              ? const IosBuildInfo(state: IosBuildState.pending)
+              : IosBuildInfo(state: IosBuildState.succeeded, fileName: 'notes-1.0.0.ipa', size: apkSize),
     );
   }
 
   @override
-  Future<ApkSource> apkSource(String id) async =>
-      ApkSource(url: apkUrl, fileName: 'Notes-1.0.0.apk', size: apkSize, headers: const {'Authorization': 'Bearer t'});
+  Future<ArtifactSource> artifactSource(String id, ArtifactKind kind) async => ArtifactSource(
+        url: apkUrl.replace(path: '/app.${kind.name}'),
+        fileName: 'Notes-1.0.0.${kind.name}',
+        size: apkSize,
+        headers: const {'Authorization': 'Bearer t'},
+        kind: kind,
+      );
 
   @override
   Future<List<RemoteBuildSummary>> history() async => const [];
@@ -81,6 +97,13 @@ Uint8List _zip(Map<String, String> files) {
   files.forEach((k, v) => archive.addFile(ArchiveFile.bytes(k, utf8.encode(v))));
   return Uint8List.fromList(ZipEncoder().encodeBytes(archive));
 }
+
+ProjectAnalysis analyzeNative() => const ProjectAnalyzer().analyze(ZipMemorySource.fromBytes(_zip({
+      'app/src/main/AndroidManifest.xml': '<manifest><application><activity android:name=".Main">'
+          '<intent-filter><action android:name="android.intent.action.MAIN"/>'
+          '<category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity></application></manifest>',
+      'app/src/main/java/com/example/a/Main.kt': 'package com.example.a\nclass Main',
+    })));
 
 Future<void> _until(bool Function() done) async {
   for (var i = 0; i < 400 && !done(); i++) {
@@ -161,9 +184,53 @@ void main() {
     downloads.dispose();
   });
 
+  test('iPhone build: APK downloads at once, polling continues until the .ipa is ready', () async {
+    final bytes = _zip({
+      'index.html': '<html></html>',
+      'appbuilder.json': '{"appName":"Notes","packageName":"com.example.notes"}',
+    });
+    final downloads = DownloadsController(store: store());
+    final c = BuildController(downloads: downloads)
+      ..project = PickedFile('notes.zip', bytes)
+      ..analysis = const ProjectAnalyzer().analyze(ZipMemorySource.fromBytes(bytes));
+    c.appName.text = 'Notes';
+    c.packageName.text = 'com.example.notes';
+    final backend = _ScriptedBackend(url('/app.apk'), apk.length);
+    expect(c.iosAvailable(backend), isTrue);
+    c.setBuildIos(true);
+
+    await c.startBuild(backend);
+    expect(backend.submitted!.ios, isTrue);
+
+    await _until(() => c.status?.isFinished ?? false);
+    expect(c.iosPending, isTrue);
+    expect(c.busy, isTrue);
+    await _until(() => downloads.job('b1')?.downloaded ?? false);
+
+    await _until(() => c.status?.ios?.state == IosBuildState.succeeded);
+    expect(c.busy, isFalse);
+    expect(c.finishedAt, isNotNull);
+
+    await downloads.download(backend, 'b1', kind: ArtifactKind.ipa);
+    await _until(() => downloads.job('b1', kind: ArtifactKind.ipa)?.downloaded ?? false);
+    final ipa = downloads.job('b1', kind: ArtifactKind.ipa)!;
+    expect(ipa.fileName, 'Notes-1.0.0.ipa');
+    expect(File(ipa.path!).readAsBytesSync(), apk);
+    expect(requests.map((r) => r.uri.path), containsAll(['/app.apk', '/app.ipa']));
+    c.dispose();
+    downloads.dispose();
+  });
+
+  test('iPhone builds need GitHub Actions and a web project', () {
+    final c = BuildController()
+      ..analysis = analyzeNative();
+    expect(c.iosAvailable(_ScriptedBackend(url('/app.apk'), 1)), isFalse);
+    c.dispose();
+  });
+
   test('downloaded APK is reused instead of downloading again', () async {
     final first = store();
-    final source = ApkSource(url: url('/app.apk'), fileName: 'A.apk', size: apk.length);
+    final source = ArtifactSource(url: url('/app.apk'), fileName: 'A.apk', size: apk.length);
     final updates = await first.download(source, 'x1').toList();
     expect(updates.first.phase, TransferPhase.queued);
     expect(updates.last.phase, TransferPhase.done);
@@ -176,12 +243,12 @@ void main() {
   });
 
   test('HTTP errors and truncated files are reported', () async {
-    final missing = await store().download(ApkSource(url: url('/missing.apk'), fileName: 'M.apk'), 'x2').toList();
+    final missing = await store().download(ArtifactSource(url: url('/missing.apk'), fileName: 'M.apk'), 'x2').toList();
     expect(missing.last.phase, TransferPhase.failed);
     expect(missing.last.message, contains('404'));
 
     final wrongSize = await store()
-        .download(ApkSource(url: url('/app.apk'), fileName: 'W.apk', size: apk.length + 1), 'x3')
+        .download(ArtifactSource(url: url('/app.apk'), fileName: 'W.apk', size: apk.length + 1), 'x3')
         .toList();
     expect(wrongSize.last.phase, TransferPhase.failed);
     expect(File('${storage.path}/apk/x3/W.apk').existsSync(), isFalse);

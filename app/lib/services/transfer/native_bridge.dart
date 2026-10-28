@@ -67,6 +67,7 @@ class NativeBridge {
     required Map<String, String> headers,
     required String relativePath,
     required String title,
+    required String mimeType,
     required String tag,
   }) async =>
       (await _call<int>('downloadEnqueue', {
@@ -74,6 +75,7 @@ class NativeBridge {
         'headers': headers,
         'relativePath': relativePath,
         'title': title,
+        'mimeType': mimeType,
         'tag': tag,
       }))!;
 

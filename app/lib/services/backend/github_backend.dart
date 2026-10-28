@@ -31,6 +31,7 @@ class GitHubBackend implements BuildBackend {
   final String _token;
   final http.Client _client;
   final Map<String, String> _commitByBuild = {};
+  final Map<String, bool> _iosRequested = {};
   String? _defaultBranch;
 
   static const workflowFile = 'inbox-build.yml';
@@ -42,6 +43,9 @@ class GitHubBackend implements BuildBackend {
 
   @override
   bool get supportsKeystoreUpload => false;
+
+  @override
+  bool get supportsIos => true;
 
   @override
   Duration get pollInterval => const Duration(seconds: 10);
@@ -109,15 +113,26 @@ class GitHubBackend implements BuildBackend {
             'или укажите в настройках ветку, где этот workflow есть.',
       );
     }
+    final workflowText = _contentOf(workflow.body);
     return BackendInfo(
       ok: true,
       message: 'Репозиторий готов: сборка в GitHub Actions',
       details: {
         'Репозиторий': '$owner/$repo',
         'Ветка': target,
-        'Приватный': repoInfo['private'] == true ? 'да' : 'нет',
+        'Приватный': repoInfo['private'] == true ? 'да (macOS-минуты для iPhone считаются ×10)' : 'нет',
+        'iPhone (.ipa)': workflowText.contains('ios-project')
+            ? 'да'
+            : 'нет — обновите .github/workflows/$workflowFile из шаблона AppBuilder',
       },
     );
+  }
+
+  /// Text of a file from a "get repository content" response.
+  static String _contentOf(String body) {
+    final decoded = jsonDecode(body);
+    if (decoded is! Map || decoded['content'] is! String) return '';
+    return utf8.decode(base64Decode((decoded['content'] as String).replaceAll('\n', '')), allowMalformed: true);
   }
 
   @override
@@ -145,6 +160,7 @@ class GitHubBackend implements BuildBackend {
       'projectFileName': submission.projectFileName,
       'options': submission.options.toJson(),
       if (icon != null) 'icon': submission.iconUploadName,
+      if (submission.ios) 'ios': true,
     }));
     final zipBlob = await _createBlob(submission.projectZip);
     final iconBlob = icon == null ? null : await _createBlob(icon);
@@ -172,6 +188,7 @@ class GitHubBackend implements BuildBackend {
       final update = await _request('PATCH', '$_repoPath/git/refs/heads/$target', body: {'sha': commit['sha']});
       if (update.statusCode == 200) {
         _commitByBuild[id] = commit['sha'] as String;
+        _iosRequested[id] = submission.ios;
         return id;
       }
       if (update.statusCode != 422) {
@@ -234,6 +251,49 @@ class GitHubBackend implements BuildBackend {
     return _commitByBuild[id] = (items.first as Map)['sha'] as String;
   }
 
+  /// Whether the request of build [id] asked for an .ipa (its request.json).
+  Future<bool> _iosRequestedFor(String id) async {
+    final cached = _iosRequested[id];
+    if (cached != null) return cached;
+    final response = await _request('GET', '$_repoPath/contents/inbox/$id/request.json', query: {'ref': await _branch()});
+    var requested = false;
+    if (response.statusCode == 200) {
+      final request = jsonDecode(_contentOf(response.body));
+      requested = request is Map && request['ios'] == true;
+    }
+    return _iosRequested[id] = requested;
+  }
+
+  Future<Map<String, dynamic>?> _run(String id) async {
+    final commit = await _commitFor(id);
+    if (commit == null) return null;
+    final runs = await _json('GET', '$_repoPath/actions/workflows/$workflowFile/runs', query: {'head_sha': commit});
+    final list = (runs['workflow_runs'] as List?) ?? const [];
+    return list.isEmpty ? null : list.first as Map<String, dynamic>;
+  }
+
+  /// The iPhone part: ios-result.json and the .ipa are attached to the
+  /// release by the "ios" job after the APK is published.
+  Future<IosBuildInfo?> _iosInfo(String id, Map<String, dynamic>? release) async {
+    final resultAsset = release == null ? null : _asset(release, (n) => n == 'ios-result.json');
+    if (resultAsset != null) {
+      final result = jsonDecode(utf8.decode(await _downloadAsset(resultAsset['id'] as int))) as Map<String, dynamic>;
+      final ipa = _asset(release!, (n) => n.endsWith('.ipa'));
+      if (result['success'] == true && ipa != null) {
+        return IosBuildInfo(state: IosBuildState.succeeded, fileName: ipa['name'] as String?, size: ipa['size'] as int?);
+      }
+      return IosBuildInfo(state: IosBuildState.failed, error: result['error'] as String? ?? 'Сборка для iPhone не удалась.');
+    }
+    if (!await _iosRequestedFor(id)) return null;
+    if (release != null && (await _run(id))?['status'] == 'completed') {
+      return const IosBuildInfo(
+        state: IosBuildState.failed,
+        error: 'Workflow $workflowFile в репозитории не собирает iPhone: обновите его из шаблона AppBuilder.',
+      );
+    }
+    return const IosBuildInfo(state: IosBuildState.pending);
+  }
+
   @override
   Future<RemoteBuildStatus> status(String id, {int logFrom = 0}) async {
     final release = await _release(id);
@@ -260,23 +320,23 @@ class GitHubBackend implements BuildBackend {
         signingSchemes: ((result['signingSchemes'] as List?) ?? const []).cast<String>(),
         warnings: ((((result['analysis'] as Map?) ?? const {})['warnings'] as List?) ?? const []).cast<String>(),
         detailsUrl: release['html_url'] as String?,
+        ios: await _iosInfo(id, release),
       );
     }
 
-    final commit = await _commitFor(id);
-    if (commit == null) {
+    if (await _commitFor(id) == null) {
       return RemoteBuildStatus(state: RemoteBuildState.failed, error: 'Запрос сборки $id не найден в репозитории.', nextLogIndex: logFrom);
     }
-    final runs = await _json('GET', '$_repoPath/actions/workflows/$workflowFile/runs', query: {'head_sha': commit});
-    final list = (runs['workflow_runs'] as List?) ?? const [];
-    if (list.isEmpty) {
+    final ios = await _iosInfo(id, null);
+    final run = await _run(id);
+    if (run == null) {
       return RemoteBuildStatus(
         state: RemoteBuildState.queued,
         stageTitle: 'Ожидание запуска workflow в GitHub Actions',
         nextLogIndex: logFrom,
+        ios: ios,
       );
     }
-    final run = list.first as Map<String, dynamic>;
     final status = run['status'] as String?;
     final conclusion = run['conclusion'] as String?;
     if (status == 'completed' && conclusion != 'success') {
@@ -285,6 +345,7 @@ class GitHubBackend implements BuildBackend {
         error: 'Workflow «Inbox build» завершился: $conclusion. Подробности — на странице запуска.',
         detailsUrl: run['html_url'] as String?,
         nextLogIndex: logFrom,
+        ios: ios == null ? null : const IosBuildInfo(state: IosBuildState.failed, error: 'Workflow завершился с ошибкой.'),
       );
     }
     return RemoteBuildStatus(
@@ -292,19 +353,21 @@ class GitHubBackend implements BuildBackend {
       stageTitle: status == 'completed' ? 'Публикация результата' : 'GitHub Actions: $status',
       detailsUrl: run['html_url'] as String?,
       nextLogIndex: logFrom,
+      ios: ios,
     );
   }
 
   @override
-  Future<ApkSource> apkSource(String id) async {
+  Future<ArtifactSource> artifactSource(String id, ArtifactKind kind) async {
     final release = await _release(id);
     if (release == null) throw BackendException('Релиз build-$id ещё не опубликован.');
-    final apk = _asset(release, (n) => n.endsWith('.apk'));
-    if (apk == null) throw BackendException('В релизе build-$id нет APK.');
-    final assetUrl = Uri.parse('$_api$_repoPath/releases/assets/${apk['id']}');
+    final extension = '.${kind.name}';
+    final asset = _asset(release, (n) => n.endsWith(extension));
+    if (asset == null) throw BackendException('В релизе build-$id нет файла $extension.');
+    final assetUrl = Uri.parse('$_api$_repoPath/releases/assets/${asset['id']}');
     final assetHeaders = {..._headers, 'Accept': 'application/octet-stream'};
-    final fileName = apk['name'] as String;
-    final size = apk['size'] as int?;
+    final fileName = asset['name'] as String;
+    final size = asset['size'] as int?;
 
     // The API answers with a redirect to a short-lived signed address of the
     // file storage: the download itself then needs no token.
@@ -322,12 +385,12 @@ class GitHubBackend implements BuildBackend {
     final location = response.headers['location'];
     await response.stream.listen(null).cancel();
     if (response.statusCode >= 300 && response.statusCode < 400 && location != null) {
-      return ApkSource(url: Uri.parse(location), fileName: fileName, size: size);
+      return ArtifactSource(url: Uri.parse(location), fileName: fileName, size: size, kind: kind);
     }
     if (response.statusCode == 200) {
-      return ApkSource(url: assetUrl, fileName: fileName, headers: assetHeaders, size: size);
+      return ArtifactSource(url: assetUrl, fileName: fileName, headers: assetHeaders, size: size, kind: kind);
     }
-    throw BackendException('Не удалось получить ссылку на APK (${response.statusCode}).');
+    throw BackendException('Не удалось получить ссылку на файл (${response.statusCode}).');
   }
 
   @override
@@ -339,6 +402,7 @@ class GitHubBackend implements BuildBackend {
         .where((r) => (r['tag_name'] as String).startsWith('build-'))
         .map((r) {
       final apk = _asset(r, (n) => n.endsWith('.apk'));
+      final ipa = _asset(r, (n) => n.endsWith('.ipa'));
       final name = (r['name'] as String?) ?? r['tag_name'] as String;
       return RemoteBuildSummary(
         id: (r['tag_name'] as String).substring('build-'.length),
@@ -346,6 +410,7 @@ class GitHubBackend implements BuildBackend {
         title: name,
         createdAt: DateTime.parse(r['created_at'] as String).toLocal(),
         apkFileName: apk?['name'] as String?,
+        ipaFileName: ipa?['name'] as String?,
         detailsUrl: r['html_url'] as String?,
       );
     }).toList();

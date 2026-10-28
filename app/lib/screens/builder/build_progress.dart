@@ -11,6 +11,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/motion.dart';
 import '../../widgets/section_card.dart';
 import 'apk_panel.dart';
+import 'ipa_panel.dart';
 
 /// Progress, stages, log and result of the running / finished build.
 class BuildProgressSection extends StatelessWidget {
@@ -83,6 +84,12 @@ class BuildProgressSection extends StatelessWidget {
               SelectableText('SHA-256: ${status.apkSha256}',
                   style: TextStyle(fontFamily: 'monospace', fontSize: 11, color: theme.colorScheme.onSurfaceVariant)),
             ],
+          ],
+          if (status?.ios != null && backend != null && c.buildId != null) ...[
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 16),
+            IpaPanel(backend: backend!, buildId: c.buildId!, info: status!.ios!),
           ],
           if (status != null && status.stages.isNotEmpty) ...[
             const SizedBox(height: 12),
