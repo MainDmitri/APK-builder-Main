@@ -23,6 +23,20 @@ _ZipInfo _readZip(Uint8List bytes) {
   );
 }
 
+/// What a build produces.
+enum BuildTarget {
+  apk('APK'),
+  both('APK + IPA'),
+  ipa('Только IPA');
+
+  const BuildTarget(this.title);
+
+  final String title;
+
+  bool get apkWanted => this != ipa;
+  bool get ipaWanted => this != apk;
+}
+
 /// State of the "Build" screen: project, parameters, icon, signing and the
 /// running remote build.
 class BuildController extends ChangeNotifier {
@@ -84,8 +98,8 @@ class BuildController extends ChangeNotifier {
   bool _polling = false;
   bool _apkHandled = false;
 
-  /// Also build an .ipa for iPhone (GitHub Actions, web projects).
-  bool buildIos = false;
+  /// APK, APK + .ipa or only the .ipa (iPhone needs GitHub Actions).
+  BuildTarget target = BuildTarget.apk;
 
   bool get isNativeGradle => analysis?.kind == ProjectKind.nativeGradle;
   bool get isWeb => analysis?.kind.isWeb ?? false;
@@ -102,8 +116,11 @@ class BuildController extends ChangeNotifier {
 
   bool get isFlutter => analysis?.kind == ProjectKind.flutterProject;
 
-  void setBuildIos(bool value) {
-    buildIos = value;
+  /// [target] limited by what the backend and the project support.
+  BuildTarget targetFor(BuildBackend? backend) => iosAvailable(backend) ? target : BuildTarget.apk;
+
+  void setTarget(BuildTarget value) {
+    target = value;
     notifyListeners();
   }
 
@@ -130,7 +147,7 @@ class BuildController extends ChangeNotifier {
           if (Validators.versionName(versionName.text) case final e?) 'Версия: $e',
           if (Validators.versionCode(versionCode.text) case final e?) 'versionCode: $e',
         ],
-        if (signing == SigningMode.keystore) ...[
+        if (signing == SigningMode.keystore && targetFor(backend).apkWanted) ...[
           if (keystore == null) 'Выберите файл keystore.',
           ?keystoreFormatError,
           if (Validators.keystorePassword(storePassword.text) case final e?) 'Пароль хранилища: $e',
@@ -287,7 +304,7 @@ class BuildController extends ChangeNotifier {
         signing: signing,
       );
 
-  String get _title => isNativeGradle || appName.text.trim().isEmpty ? 'Сборка APK' : 'Сборка «${appName.text.trim()}»';
+  String get _title => isNativeGradle || appName.text.trim().isEmpty ? 'Сборка приложения' : 'Сборка «${appName.text.trim()}»';
 
   Future<void> startBuild(BuildBackend backend) async {
     final picked = project;
@@ -306,14 +323,16 @@ class BuildController extends ChangeNotifier {
     notifyListeners();
     try {
       final chosenIcon = iconSupported ? icon : null;
+      final what = targetFor(backend);
       buildId = await backend.submit(BuildSubmission(
         projectZip: picked.bytes,
         projectFileName: picked.name,
         options: options,
-        keystore: signing == SigningMode.keystore ? _keystoreInput : null,
+        keystore: signing == SigningMode.keystore && what.apkWanted ? _keystoreInput : null,
         icon: chosenIcon?.bytes,
         iconFileName: chosenIcon?.name,
-        ios: buildIos && iosAvailable(backend),
+        ios: what.ipaWanted,
+        android: what.apkWanted,
       ));
       log.add('Сборка $buildId отправлена (${backend.mode.title}).');
       await bridge.requestNotifications();
@@ -343,7 +362,7 @@ class BuildController extends ChangeNotifier {
       if (next.isFinished && !_apkHandled) {
         _apkHandled = true;
         // The APK is downloaded at once, even while the .ipa is still building.
-        if (next.state == RemoteBuildState.succeeded) await downloads?.download(backend, id);
+        if (next.state == RemoteBuildState.succeeded && !next.androidSkipped) await downloads?.download(backend, id);
       }
       if (next.isFinished && !next.iosPending) {
         _stopPolling();
@@ -354,7 +373,7 @@ class BuildController extends ChangeNotifier {
         await bridge.watchUpdate(
           _title,
           next.isFinished
-              ? 'APK готов — собирается версия для iPhone (macOS)…'
+              ? (next.androidSkipped ? 'Собирается .ipa для iPhone (macOS)…' : 'APK готов — собирается версия для iPhone (macOS)…')
               : (next.queuePosition != null ? 'В очереди, позиция ${next.queuePosition}' : (next.stageTitle ?? 'Сборка…')),
           progress: next.isFinished || progress == null ? null : (progress * 100).round(),
         );
@@ -371,6 +390,12 @@ class BuildController extends ChangeNotifier {
   Future<void> _finished(RemoteBuildStatus result) async {
     if (result.state != RemoteBuildState.succeeded) {
       await bridge.watchStop(title: 'Ошибка сборки', text: result.error ?? 'Подробности — в журнале сборки.');
+    } else if (result.androidSkipped) {
+      final ok = result.ios?.state == IosBuildState.succeeded;
+      await bridge.watchStop(
+        title: ok ? 'IPA готов' : 'Ошибка сборки для iPhone',
+        text: ok ? '.ipa для iPhone готов — откройте AppBuilder.' : (result.ios?.error ?? 'Подробности — в ios-build.log релиза.'),
+      );
     } else if (result.ios?.state == IosBuildState.failed) {
       await bridge.watchStop(title: 'APK готов, iPhone — ошибка', text: result.ios!.error ?? 'Подробности — в ios-build.log релиза.');
     } else if (result.ios?.state == IosBuildState.succeeded) {

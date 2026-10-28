@@ -51,6 +51,7 @@ class _ScriptedBackend implements BuildBackend {
   Future<RemoteBuildStatus> status(String id, {int logFrom = 0}) async {
     calls++;
     final ios = submitted?.ios ?? false;
+    final android = submitted?.android ?? true;
     if (calls < 3) {
       return RemoteBuildStatus(
         state: RemoteBuildState.running,
@@ -64,8 +65,9 @@ class _ScriptedBackend implements BuildBackend {
     }
     return RemoteBuildStatus(
       state: RemoteBuildState.succeeded,
-      apkFileName: 'Notes-1.0.0.apk',
-      apkSize: apkSize,
+      apkFileName: android ? 'Notes-1.0.0.apk' : null,
+      apkSize: android ? apkSize : null,
+      androidSkipped: !android,
       nextLogIndex: logFrom,
       // The .ipa is ready a few polls after the APK.
       ios: !ios
@@ -197,10 +199,11 @@ void main() {
     c.packageName.text = 'com.example.notes';
     final backend = _ScriptedBackend(url('/app.apk'), apk.length);
     expect(c.iosAvailable(backend), isTrue);
-    c.setBuildIos(true);
+    c.setTarget(BuildTarget.both);
 
     await c.startBuild(backend);
     expect(backend.submitted!.ios, isTrue);
+    expect(backend.submitted!.android, isTrue);
 
     await _until(() => c.status?.isFinished ?? false);
     expect(c.iosPending, isTrue);
@@ -219,6 +222,48 @@ void main() {
     expect(requests.map((r) => r.uri.path), containsAll(['/app.apk', '/app.ipa']));
     c.dispose();
     downloads.dispose();
+  });
+
+  test('iPhone only: no APK, no keystore check, only the .ipa is downloaded', () async {
+    final bytes = _zip({
+      'index.html': '<html></html>',
+      'appbuilder.json': '{"appName":"Notes","packageName":"com.example.notes"}',
+    });
+    final downloads = DownloadsController(store: store());
+    final c = BuildController(downloads: downloads)
+      ..project = PickedFile('notes.zip', bytes)
+      ..analysis = const ProjectAnalyzer().analyze(ZipMemorySource.fromBytes(bytes))
+      ..signing = SigningMode.keystore;
+    c.appName.text = 'Notes';
+    c.packageName.text = 'com.example.notes';
+    final backend = _ScriptedBackend(url('/app.apk'), apk.length);
+    expect(c.readinessErrors(backend).any((e) => e.contains('keystore')), isTrue);
+    c.setTarget(BuildTarget.ipa);
+    expect(c.readinessErrors(backend), isEmpty);
+
+    await c.startBuild(backend);
+    expect(backend.submitted!.ios, isTrue);
+    expect(backend.submitted!.android, isFalse);
+    expect(backend.submitted!.keystore, isNull);
+
+    await _until(() => c.status?.ios?.state == IosBuildState.succeeded);
+    expect(c.status!.androidSkipped, isTrue);
+    expect(c.busy, isFalse);
+    expect(downloads.job('b1'), isNull);
+
+    await downloads.download(backend, 'b1', kind: ArtifactKind.ipa);
+    await _until(() => downloads.job('b1', kind: ArtifactKind.ipa)?.downloaded ?? false);
+    expect(requests.map((r) => r.uri.path), ['/app.ipa']);
+    c.dispose();
+    downloads.dispose();
+  });
+
+  test('without iPhone support the target falls back to the APK', () {
+    final c = BuildController()
+      ..analysis = analyzeNative()
+      ..target = BuildTarget.ipa;
+    expect(c.targetFor(_ScriptedBackend(url('/app.apk'), 1)), BuildTarget.apk);
+    c.dispose();
   });
 
   test('iPhone builds need GitHub Actions and a web or Flutter project', () {

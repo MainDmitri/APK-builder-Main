@@ -7,6 +7,7 @@ name: Inbox build
 # Requests with "ios": true also get an unsigned .ipa for iPhone (web and
 # Flutter projects): the iOS project is prepared here, compiled by the "ios" job
 # on macOS and attached to the same release (ios-result.json, ios-build.log).
+# "android": false skips the APK (iPhone only).
 
 on:
   push:
@@ -42,6 +43,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           pending=""
+          android=false
           for req in inbox/*/request.json; do
             [ -f "$req" ] || continue
             id=$(basename "$(dirname "$req")")
@@ -49,10 +51,12 @@ jobs:
               echo "build-$id already published — skip"
             else
               pending="$pending $id"
+              [ "$(jq -r '.android' "$req")" = "false" ] || android=true
             fi
           done
           echo "ids=${pending# }" >> "$GITHUB_OUTPUT"
-          echo "Pending: ${pending:-none}"
+          echo "android=$android" >> "$GITHUB_OUTPUT"
+          echo "Pending: ${pending:-none} (APK needed: $android)"
       - name: Detect Flutter projects
         id: flutter
         if: steps.pending.outputs.ids != ''
@@ -76,7 +80,7 @@ jobs:
         with:
           sdk: 3.13.5
       - uses: actions/setup-java@v4
-        if: steps.pending.outputs.ids != ''
+        if: steps.pending.outputs.android == 'true'
         with:
           distribution: temurin
           java-version: '17'
@@ -86,11 +90,15 @@ jobs:
           node-version: '24'
       - name: Install Gradle, librsvg, corepack
         if: steps.pending.outputs.ids != ''
+        env:
+          ANDROID_NEEDED: ${{ steps.pending.outputs.android }}
         run: |
           sudo apt-get update -q && sudo apt-get install -y -q librsvg2-bin fonts-dejavu-core
-          curl -fsSL -o /tmp/gradle.zip "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip"
-          unzip -q /tmp/gradle.zip -d "$HOME"
-          echo "$HOME/gradle-${GRADLE_VERSION}/bin" >> "$GITHUB_PATH"
+          if [ "$ANDROID_NEEDED" = "true" ]; then
+            curl -fsSL -o /tmp/gradle.zip "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip"
+            unzip -q /tmp/gradle.zip -d "$HOME"
+            echo "$HOME/gradle-${GRADLE_VERSION}/bin" >> "$GITHUB_PATH"
+          fi
           corepack enable
       - name: Restore debug keystore (stable signature between builds) and Gradle cache
         if: steps.pending.outputs.ids != ''
@@ -99,7 +107,7 @@ jobs:
           path: ${{ runner.temp }}/appbuilder-data/keys
           key: appbuilder-debug-keystore-v1
       - uses: actions/cache@v4
-        if: steps.pending.outputs.ids != ''
+        if: steps.pending.outputs.android == 'true'
         with:
           path: |
             ~/.gradle/caches
@@ -128,6 +136,11 @@ jobs:
             out="$RUNNER_TEMP/results/$id"
             mkdir -p "$out"
             jq '.options // {}' "$dir/request.json" > "$out/options.json"
+            if [ "$(jq -r '.android' "$dir/request.json")" = "false" ]; then
+              echo "APK не запрошен: собирается только .ipa для iPhone" > "$out/build.log"
+              echo '{"success":true,"androidSkipped":true}' > "$out/result.json"
+              continue
+            fi
             signing=$(jq -r '.options.signing // "debug"' "$dir/request.json")
             ks_args=()
             icon_args=()
@@ -211,7 +224,16 @@ jobs:
             out="$RUNNER_TEMP/results/$id"
             success=$(jq -r '.success' "$out/result.json")
             name=$(jq -r '.app.appName // "APK"' "$out/result.json")
-            if [ "$success" = "true" ]; then
+            if [ "$(jq -r '.androidSkipped // false' "$out/result.json")" = "true" ]; then
+              if [ -f "$out/ios-result.json" ]; then
+                title="❌ Ошибка сборки для iPhone $id"
+                notes=$(jq -r '.error' "$out/ios-result.json")
+              else
+                name=$(jq -r '.app.appName // "iPhone"' "$RUNNER_TEMP/ios/$id/project.json" 2>/dev/null || echo iPhone)
+                title="📱 $name — iPhone, build $id"
+                notes="Только iPhone: неподписанный .ipa собирается на macOS и появится в этом релизе через несколько минут."
+              fi
+            elif [ "$success" = "true" ]; then
               title="✅ $name — build $id"
               notes="Подписанный APK собран AppBuilder Engine. Схемы подписи: $(jq -r '.signingSchemes | join(", ")' "$out/result.json")."
             else
@@ -267,6 +289,10 @@ jobs:
             else
               echo '{"success":false,"error":"Xcode не смог собрать приложение — подробности в ios-build.log"}' > "$out/ios-result.json"
               files=("$out/ios-result.json" "$out/ios-build.log")
+              # iPhone-only request: the release has nothing else, mark it as failed.
+              if [ "$(jq -r '.android' "inbox/$id/request.json")" = "false" ]; then
+                gh release edit "build-$id" --title "❌ Ошибка сборки для iPhone $id" --repo "$GITHUB_REPOSITORY"
+              fi
             fi
             tail -5 "$out/ios-build.log"
             gh release upload "build-$id" "${files[@]}" --clobber --repo "$GITHUB_REPOSITORY"

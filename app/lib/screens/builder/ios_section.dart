@@ -5,7 +5,7 @@ import '../../services/backend/build_backend.dart';
 import '../../state/build_controller.dart';
 import '../../widgets/section_card.dart';
 
-/// Switch for the additional unsigned .ipa (GitHub Actions on macOS).
+/// What to build: APK, APK + unsigned .ipa or only the .ipa (GitHub Actions on macOS).
 class IosSection extends StatelessWidget {
   const IosSection({super.key, required this.backend});
 
@@ -19,27 +19,40 @@ class IosSection extends StatelessWidget {
 
     final Widget child;
     if (!(backend?.supportsIos ?? false)) {
-      child = const Text('Сборка для iPhone доступна в режиме «GitHub Actions»: для неё нужен macOS с Xcode, '
-          'а он есть только там.');
+      child = const Text('Собирается APK для Android. Сборка для iPhone доступна в режиме «GitHub Actions»: '
+          'для неё нужен macOS с Xcode, а он есть только там.');
     } else if (!(c.analysis?.kind.supportsIos ?? false)) {
-      child = const Text('Для iPhone собираются веб-проекты (HTML/JS, React, Vue, Vite) и Flutter. '
-          'Код Kotlin/Java работает только на Android.');
+      child = const Text('Собирается APK для Android. Для iPhone собираются веб-проекты (HTML/JS, React, Vue, Vite) '
+          'и Flutter. Код Kotlin/Java работает только на Android.');
     } else {
+      final target = c.targetFor(backend);
       child = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          value: c.buildIos,
-          onChanged: c.busy ? null : c.setBuildIos,
-          title: const Text('Собрать также .ipa для iPhone'),
-          subtitle: const Text('Неподписанный .ipa: ставится с компьютера через Sideloadly под вашим Apple ID.'),
+        SegmentedButton<BuildTarget>(
+          showSelectedIcon: false,
+          segments: [
+            for (final t in BuildTarget.values) ButtonSegment(value: t, label: Text(t.title, maxLines: 1, softWrap: false)),
+          ],
+          selected: {target},
+          onSelectionChanged: c.busy ? null : (s) => c.setTarget(s.first),
         ),
-        Text(
-          'Сборка на macOS добавляет ${c.isFlutter ? '8–15' : '3–6'} минут. '
-          'В приватном репозитории минуты macOS расходуются в 10 раз быстрее.',
-          style: muted,
-        ),
+        const SizedBox(height: 12),
+        Text(switch (target) {
+          BuildTarget.apk => 'Только Android: подписанный APK, без macOS.',
+          BuildTarget.both => 'APK скачается сразу, .ipa для iPhone появится позже. '
+              'Неподписанный .ipa ставится с компьютера через Sideloadly под вашим Apple ID.',
+          BuildTarget.ipa => 'Только .ipa для iPhone: APK не собирается, подпись Android не нужна. '
+              'Неподписанный .ipa ставится с компьютера через Sideloadly под вашим Apple ID.',
+        }),
+        if (target.ipaWanted) ...[
+          const SizedBox(height: 6),
+          Text(
+            'Сборка на macOS занимает ${c.isFlutter ? '8–15' : '3–6'} минут. '
+            'В приватном репозитории минуты macOS расходуются в 10 раз быстрее.',
+            style: muted,
+          ),
+        ],
       ]);
     }
-    return SectionCard(title: 'iPhone (iOS)', icon: Icons.phone_iphone, child: child);
+    return SectionCard(title: 'Платформа', icon: Icons.devices_rounded, child: child);
   }
 }

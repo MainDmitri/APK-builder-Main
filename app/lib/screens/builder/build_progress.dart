@@ -34,6 +34,11 @@ class BuildProgressSection extends StatelessWidget {
           status!.queuePosition == null ? (status.stageTitle ?? 'В очереди') : 'В очереди, позиция ${status.queuePosition}',
         ),
       RemoteBuildState.running => (Icons.precision_manufacturing_outlined, status!.stageTitle ?? 'Сборка…'),
+      RemoteBuildState.succeeded when status!.androidSkipped => switch (status.ios?.state) {
+          IosBuildState.succeeded => (Icons.verified_outlined, 'IPA готов'),
+          IosBuildState.failed => (Icons.error_outline, 'Ошибка сборки для iPhone'),
+          _ => (Icons.phone_iphone, 'Собирается .ipa для iPhone'),
+        },
       RemoteBuildState.succeeded => (Icons.verified_outlined, 'APK готов'),
       RemoteBuildState.failed => (Icons.error_outline, 'Ошибка сборки'),
     };
@@ -60,13 +65,13 @@ class BuildProgressSection extends StatelessWidget {
             GradientProgressBar(value: progress),
             const SizedBox(height: 4),
           ],
-          if (status?.state == RemoteBuildState.succeeded) ...[
+          if (status?.state == RemoteBuildState.succeeded && !status!.androidSkipped) ...[
             Row(children: [
               const SuccessCheck(),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(status!.apkFileName ?? 'app.apk', style: theme.textTheme.titleMedium),
+                  Text(status.apkFileName ?? 'app.apk', style: theme.textTheme.titleMedium),
                   Text(
                     [
                       if (status.apkSize != null) formatBytes(status.apkSize!),
@@ -86,10 +91,12 @@ class BuildProgressSection extends StatelessWidget {
             ],
           ],
           if (status?.ios != null && backend != null && c.buildId != null) ...[
+            if (!status!.androidSkipped) ...[
+              const SizedBox(height: 16),
+              const Divider(),
+            ],
             const SizedBox(height: 16),
-            const Divider(),
-            const SizedBox(height: 16),
-            IpaPanel(backend: backend!, buildId: c.buildId!, info: status!.ios!),
+            IpaPanel(backend: backend!, buildId: c.buildId!, info: status.ios!),
           ],
           if (status != null && status.stages.isNotEmpty) ...[
             const SizedBox(height: 12),

@@ -72,6 +72,7 @@ class BuildSubmission {
     this.icon,
     this.iconFileName,
     this.ios = false,
+    this.android = true,
   });
 
   final Uint8List projectZip;
@@ -83,8 +84,11 @@ class BuildSubmission {
   final Uint8List? icon;
   final String? iconFileName;
 
-  /// Also build an unsigned .ipa for iPhone (GitHub Actions, web projects).
+  /// Also build an unsigned .ipa for iPhone (GitHub Actions, web and Flutter projects).
   final bool ios;
+
+  /// Build the APK; false with [ios] → only the .ipa.
+  final bool android;
 
   /// `icon.png` / `icon.jpg` / `icon.webp` for the uploaded picture.
   String get iconUploadName {
@@ -125,6 +129,7 @@ class RemoteBuildStatus {
     this.detailsUrl,
     this.queuePosition,
     this.ios,
+    this.androidSkipped = false,
   });
 
   final RemoteBuildState state;
@@ -153,7 +158,10 @@ class RemoteBuildStatus {
   /// Present when the build also produces an .ipa for iPhone.
   final IosBuildInfo? ios;
 
-  /// The APK part is done.
+  /// iPhone-only build: no APK was requested.
+  final bool androidSkipped;
+
+  /// The APK part is done (or skipped).
   bool get isFinished => state == RemoteBuildState.succeeded || state == RemoteBuildState.failed;
 
   bool get iosPending => ios?.state == IosBuildState.pending;

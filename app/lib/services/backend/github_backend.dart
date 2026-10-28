@@ -161,6 +161,7 @@ class GitHubBackend implements BuildBackend {
       'options': submission.options.toJson(),
       if (icon != null) 'icon': submission.iconUploadName,
       if (submission.ios) 'ios': true,
+      if (!submission.android) 'android': false,
     }));
     final zipBlob = await _createBlob(submission.projectZip);
     final iconBlob = icon == null ? null : await _createBlob(icon);
@@ -321,6 +322,7 @@ class GitHubBackend implements BuildBackend {
         warnings: ((((result['analysis'] as Map?) ?? const {})['warnings'] as List?) ?? const []).cast<String>(),
         detailsUrl: release['html_url'] as String?,
         ios: await _iosInfo(id, release),
+        androidSkipped: result['androidSkipped'] == true,
       );
     }
 
@@ -406,7 +408,10 @@ class GitHubBackend implements BuildBackend {
       final name = (r['name'] as String?) ?? r['tag_name'] as String;
       return RemoteBuildSummary(
         id: (r['tag_name'] as String).substring('build-'.length),
-        state: apk != null ? RemoteBuildState.succeeded : RemoteBuildState.failed,
+        // An iPhone-only release has no files until macOS attaches the .ipa.
+        state: apk != null || ipa != null
+            ? RemoteBuildState.succeeded
+            : (name.startsWith('❌') ? RemoteBuildState.failed : RemoteBuildState.running),
         title: name,
         createdAt: DateTime.parse(r['created_at'] as String).toLocal(),
         apkFileName: apk?['name'] as String?,

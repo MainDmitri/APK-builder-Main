@@ -108,9 +108,9 @@ class _BuildCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final ok = summary.state == RemoteBuildState.succeeded;
+    final apk = summary.apkFileName != null;
     final ipa = summary.ipaFileName;
-    final expandable = ok || ipa != null;
+    final expandable = apk || ipa != null;
     final (IconData icon, Color color) = switch (summary.state) {
       RemoteBuildState.succeeded => (Icons.check_circle_rounded, AppColors.success),
       RemoteBuildState.failed => (Icons.error_rounded, theme.colorScheme.error),
@@ -125,8 +125,9 @@ class _BuildCard extends StatelessWidget {
           leading: Icon(icon, color: color, size: 30),
           title: Text(summary.title, style: const TextStyle(fontWeight: FontWeight.w700)),
           subtitle: Text('${MaterialLocalizations.of(context).formatShortDate(summary.createdAt)} '
-              '${TimeOfDay.fromDateTime(summary.createdAt).format(context)} · ${summary.apkFileName ?? summary.id}'
-              '${ipa != null ? ' + iPhone' : ''}'),
+              '${TimeOfDay.fromDateTime(summary.createdAt).format(context)} · '
+              '${summary.apkFileName ?? ipa ?? (summary.state == RemoteBuildState.running ? 'iPhone — сборка на macOS' : summary.id)}'
+              '${apk && ipa != null ? ' + iPhone' : ''}'),
           trailing: Row(mainAxisSize: MainAxisSize.min, children: [
             if (summary.detailsUrl != null)
               IconButton(
@@ -150,8 +151,8 @@ class _BuildCard extends StatelessWidget {
               ? Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                    if (ok) ApkPanel(backend: backend, buildId: summary.id, compact: true),
-                    if (ok && ipa != null) const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider()),
+                    if (apk) ApkPanel(backend: backend, buildId: summary.id, compact: true),
+                    if (apk && ipa != null) const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider()),
                     if (ipa != null)
                       IpaPanel(
                         backend: backend,

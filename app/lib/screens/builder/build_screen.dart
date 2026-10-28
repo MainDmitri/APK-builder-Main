@@ -26,6 +26,7 @@ class BuildScreen extends StatelessWidget {
     final settings = context.watch<SettingsController>();
     final problems = c.readinessErrors(backend);
     final ready = problems.isEmpty && !c.busy && !c.analyzing;
+    final target = c.targetFor(backend);
 
     var order = 0;
     Widget entry(Widget child) => FadeSlideIn(delay: Duration(milliseconds: 70 * order++), child: child);
@@ -51,14 +52,22 @@ class BuildScreen extends StatelessWidget {
                 const FadeSlideIn(delay: Duration(milliseconds: 70), child: IconSection()),
                 const SizedBox(height: 16),
                 FadeSlideIn(delay: const Duration(milliseconds: 140), child: IosSection(backend: backend)),
-                const SizedBox(height: 16),
-                FadeSlideIn(delay: const Duration(milliseconds: 210), child: SigningSection(backend: backend)),
+                if (target.apkWanted) ...[
+                  const SizedBox(height: 16),
+                  FadeSlideIn(delay: const Duration(milliseconds: 210), child: SigningSection(backend: backend)),
+                ],
               ],
               const SizedBox(height: 20),
               entry(GradientButton(
                 label: c.submitting
                     ? 'Отправка проекта…'
-                    : (c.buildRunning ? 'Идёт сборка…' : (c.iosPending ? 'Собирается версия для iPhone…' : 'Собрать APK')),
+                    : (c.buildRunning ? 'Идёт сборка…' : (c.iosPending
+                        ? 'Собирается версия для iPhone…'
+                        : switch (target) {
+                            BuildTarget.apk => 'Собрать APK',
+                            BuildTarget.both => 'Собрать APK и IPA',
+                            BuildTarget.ipa => 'Собрать IPA',
+                          })),
                 icon: Icons.rocket_launch_rounded,
                 loading: c.busy,
                 onPressed: ready ? () => c.startBuild(backend!) : null,
