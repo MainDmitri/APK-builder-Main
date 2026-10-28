@@ -13,7 +13,13 @@ for pair in "$@"; do
   apk="${pair%%=*}"; pkg="${pair##*=}"
   echo "::group::$pkg ($(basename "$apk"))"
   "$aapt" dump badging "$apk" | grep -E "^(package|sdkVersion|targetSdkVersion|native-code|application-label):" || true
-  result=$(adb install -r "$apk" 2>&1); echo "$result"
+  # Large APKs can hang streamed installs on old emulators: bounded time, then a plain push-and-install.
+  result=$(timeout 300 adb install -r "$apk" 2>&1)
+  if [ $? -eq 124 ]; then
+    echo "adb install timed out after 300 s — retrying without streaming"
+    result=$(timeout 600 adb install -r --no-streaming "$apk" 2>&1)
+  fi
+  echo "$result"
   if ! grep -q "^Success" <<<"$result"; then
     echo "::error::$pkg: adb install failed on API $sdk — $result"
     failed=1; echo "::endgroup::"; continue
