@@ -132,7 +132,7 @@ jobs:
           APPBUILDER_DATA: ${{ runner.temp }}/appbuilder-data
         run: |
           dart pub get
-          dart run bin/engine.dart selftest --only flutter-counter --out ../flutter-out
+          dart run bin/engine.dart selftest --only flutter-counter --only flutter-netinfo --out ../flutter-out
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -176,6 +176,7 @@ jobs:
             selftest-out/gradle-project.apk=net.appbuilder.samples.deviceinfo
             selftest-out/nested-client.apk=net.appbuilder.samples.converter
             selftest-out/flutter-counter.apk=net.appbuilder.samples.fluttercounter
+            selftest-out/flutter-netinfo.apk=net.appbuilder.samples.netinfo
       - uses: actions/upload-artifact@v4
         if: always()
         with:

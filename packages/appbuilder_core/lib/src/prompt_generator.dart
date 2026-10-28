@@ -30,10 +30,17 @@ class PromptGenerator {
 
     b.writeln('# Задача');
     b.writeln();
-    b.writeln(c.appType.isFlutter
-        ? 'Ты — senior-разработчик Flutter. Создай полностью рабочее приложение «${c.appName}» на Flutter '
-            '${Toolchain.flutter} (Dart ${Toolchain.flutterDart}) для Android и iPhone. Твой ответ будет упакован в ZIP и '
-            'собран в APK и .ipa автоматическим сборщиком **AppBuilder Engine** (контракт v${Toolchain.contractVersion}) '
+    b.writeln(c.isIphone
+        ? 'Ты — senior iOS-разработчик, пишущий на Flutter. Создай полностью рабочее приложение для **iPhone** '
+            '«${c.appName}» на Flutter ${Toolchain.flutter} (Dart ${Toolchain.flutterDart}). Твой ответ будет упакован в ZIP '
+            'и собран в настоящее нативное приложение iOS (.ipa, Xcode на macOS) автоматическим сборщиком '
+            '**AppBuilder Engine** (контракт v${Toolchain.contractVersion}) без участия человека, поэтому строго соблюдай '
+            'формат ниже: любое отступление ломает сборку. Приложение должно выглядеть и вести себя как качественное '
+            'приложение для iPhone, а не как перенесённое с Android.'
+        : c.effectiveType.isFlutter
+        ? 'Ты — senior-разработчик Flutter. Создай полностью рабочее Android-приложение «${c.appName}» на Flutter '
+            '${Toolchain.flutter} (Dart ${Toolchain.flutterDart}). Твой ответ будет упакован в ZIP и собран в APK '
+            'автоматическим сборщиком **AppBuilder Engine** (контракт v${Toolchain.contractVersion}) '
             'без участия человека, поэтому строго соблюдай формат ниже: любое отступление ломает сборку.'
         : 'Ты — senior-разработчик мобильных приложений. Создай полностью рабочее Android-приложение '
             '«${c.appName}». Твой ответ будет упакован в ZIP и собран в APK автоматическим сборщиком '
@@ -50,7 +57,9 @@ class PromptGenerator {
     b.writeln('| Параметр | Значение |');
     b.writeln('|---|---|');
     b.writeln('| Название | ${c.appName} |');
-    b.writeln('| Пакет (applicationId${c.appType.isFlutter ? ' / bundle id' : ''}) | `${c.packageName}` |');
+    b.writeln(c.isIphone
+        ? '| Пакет (bundle id) | `${c.packageName}` (сборщик заменит `_` на `-`) |'
+        : '| Пакет (applicationId) | `${c.packageName}` |');
     b.writeln('| Версия | ${c.versionName} (versionCode 1) |');
     b.writeln('| Ориентация экрана | ${c.orientation.title} (`${c.orientation.id}`) |');
     b.writeln('| Разрешения | ${_permissionList(c)} |');
@@ -59,14 +68,14 @@ class PromptGenerator {
     b.writeln('| Основной цвет | ${c.themeColor} |');
     final tech = PromptTech.of(c);
     b.writeln('| Язык / технология | ${tech.title} |');
-    b.writeln('| Платформы | ${tech.iphone ? 'Android (APK) и iPhone (.ipa)' : 'Android (APK)'} |');
+    b.writeln('| Платформа | ${c.isIphone ? 'iPhone (.ipa), iOS 13 и новее, iPhone SE — Pro Max' : 'Android (APK), Android 7.0+ (API ${Toolchain.minSdk})'} |');
     b.writeln('| Тип проекта сборщика | $profile |');
     if (c.needsRemoteUrl) {
       b.writeln('| ${c.webServiceMode == WebServiceMode.remoteSite ? 'Сайт' : 'Базовый URL API'} | ${c.remoteUrl.trim()} |');
     }
     b.writeln();
 
-    switch (c.appType) {
+    switch (c.effectiveType) {
       case PromptAppType.utility:
         _staticWeb(b, c, _utilityFiles(c), _utilityRules(c));
       case PromptAppType.webService:
@@ -93,7 +102,7 @@ class PromptGenerator {
       case PromptAppType.nativeAndroid:
         _native(b, c);
       case PromptAppType.flutter:
-        _flutter(b, c);
+        c.isIphone ? _iphone(b, c) : _flutter(b, c);
     }
 
     _forbidden(b, c);
@@ -114,8 +123,9 @@ class PromptGenerator {
   // ------------------------------------------------------------ common bits
 
   String _profileName(PromptConfig c) {
-    if (c.appType == PromptAppType.nativeAndroid) return 'C1 — нативные исходники Kotlin (без Gradle-файлов)';
-    if (c.appType.isFlutter) return 'D — Flutter (pubspec.yaml + lib/), APK и .ipa';
+    if (c.effectiveType == PromptAppType.nativeAndroid) return 'C1 — нативные исходники Kotlin (без Gradle-файлов)';
+    if (c.isIphone) return 'D — Flutter (pubspec.yaml + lib/), сборка .ipa на macOS';
+    if (c.effectiveType.isFlutter) return 'D — Flutter (pubspec.yaml + lib/), сборка APK';
     if (c.usesNode) return 'B — Node.js SPA (npm install → npm run build → WebView)';
     return 'A — статический веб (HTML/CSS/JS в WebView)';
   }
@@ -128,16 +138,16 @@ class PromptGenerator {
   Set<AppPermission> _effectivePermissions(PromptConfig c) {
     final set = {...c.permissions};
     if (c.needsRemoteUrl) set.add(AppPermission.internet);
-    if (c.appType.usesWebView) set.retainAll(AppPermission.webSupported);
+    if (c.effectiveType.usesWebView) set.retainAll(AppPermission.webSupported);
     return set;
   }
 
   String _storageTitle(PromptConfig c) => switch (c.storage) {
         StorageKind.none => 'не требуется',
         StorageKind.keyValue =>
-          c.appType.isFlutter ? 'shared_preferences' : (c.appType.isNative ? 'SharedPreferences' : 'localStorage (JSON)'),
+          c.effectiveType.isFlutter ? 'shared_preferences' : (c.effectiveType.isNative ? 'SharedPreferences' : 'localStorage (JSON)'),
         StorageKind.database =>
-          c.appType.isFlutter ? 'SQLite (sqflite)' : (c.appType.isNative ? 'SQLite (SQLiteOpenHelper)' : 'IndexedDB'),
+          c.effectiveType.isFlutter ? 'SQLite (sqflite)' : (c.effectiveType.isNative ? 'SQLite (SQLiteOpenHelper)' : 'IndexedDB'),
       };
 
   String _slug(PromptConfig c) {
@@ -193,9 +203,6 @@ class PromptGenerator {
         'Сохранение файла пользователю: `<a href="blob:…" download="имя.ext">` (оболочка сохранит в «Загрузки»); '
             'выбор файла: `<input type="file">`.',
         'Подключи манифест: `<link rel="manifest" href="./manifest.json">`.',
-        'Тот же код собирается и для iPhone (WKWebView, iOS 15+): перед вызовом проверяй наличие `navigator.vibrate` '
-            'и `window.AppBuilderAndroid`, не полагайся на Service Worker; `font-size` полей ввода ≥ 16px (иначе iOS '
-            'увеличивает страницу), высота экрана — `100dvh`, а не `100vh`.',
       ];
 
   List<String> _webStorageRules(PromptConfig c) => switch (c.storage) {
@@ -230,8 +237,8 @@ class PromptGenerator {
   // --------------------------------------------------------------- profile A
 
   void _staticWeb(StringBuffer b, PromptConfig c, String tree, List<String> specific) {
-    final fullscreen = c.appType == PromptAppType.game;
-    final remote = c.appType == PromptAppType.webService && c.webServiceMode == WebServiceMode.remoteSite;
+    final fullscreen = c.effectiveType == PromptAppType.game;
+    final remote = c.effectiveType == PromptAppType.webService && c.webServiceMode == WebServiceMode.remoteSite;
     b.writeln('## Структура ZIP-архива (строго, файлы в корне архива)');
     b.writeln();
     _codeBlock(b, '', tree);
@@ -353,7 +360,7 @@ class PromptGenerator {
   // --------------------------------------------------------------- profile B
 
   void _nodeProject(StringBuffer b, PromptConfig c, Map<String, Object?> packageJson, String tree, List<String> specific) {
-    final fullscreen = c.appType == PromptAppType.game;
+    final fullscreen = c.effectiveType == PromptAppType.game;
     b.writeln('## Структура ZIP-архива (строго, файлы в корне архива)');
     b.writeln();
     _codeBlock(b, '', tree);
@@ -378,7 +385,7 @@ class PromptGenerator {
     b.writeln();
     _bullets(b, [
       'Пиши на JavaScript (ESM, JSX/SFC), **без TypeScript** — меньше точек отказа при сборке.',
-      '`index.html` в корне проекта; точка входа подключается так: `<script type="module" src="./src/main.${c.spaFramework == SpaFramework.react && c.appType == PromptAppType.nodeSpa ? 'jsx' : 'js'}"></script>`; '
+      '`index.html` в корне проекта; точка входа подключается так: `<script type="module" src="./src/main.${c.spaFramework == SpaFramework.react && c.effectiveType == PromptAppType.nodeSpa ? 'jsx' : 'js'}"></script>`; '
           'манифест: `<link rel="manifest" href="./manifest.json">` (файл лежит в public/).',
       '`base: \'./\'` в vite.config.js обязателен — итоговые пути должны быть относительными.',
       'Ассеты импортируй из `src/` (`import url from \'./assets/x.svg\'`) или клади в `public/` и ссылайся относительно (`./sounds/x.mp3`).',
@@ -397,9 +404,9 @@ class PromptGenerator {
   }
 
   String _viteConfig(PromptConfig c) {
-    final isReact = c.appType == PromptAppType.nodeSpa && c.spaFramework == SpaFramework.react;
-    final isVue = c.appType == PromptAppType.nodeSpa && c.spaFramework == SpaFramework.vue;
-    final tailwind = c.appType == PromptAppType.nodeSpa;
+    final isReact = c.effectiveType == PromptAppType.nodeSpa && c.spaFramework == SpaFramework.react;
+    final isVue = c.effectiveType == PromptAppType.nodeSpa && c.spaFramework == SpaFramework.vue;
+    final tailwind = c.effectiveType == PromptAppType.nodeSpa;
     final imports = [
       "import { defineConfig } from 'vite';",
       if (isReact) "import react from '@vitejs/plugin-react';",
@@ -674,21 +681,27 @@ ${permissionXml.isEmpty ? '' : '$permissionXml\n'}
     return RegExp(r'^[a-z]').hasMatch(last) ? last : 'app_$last';
   }
 
-  void _flutter(StringBuffer b, PromptConfig c) {
-    final name = _dartName(c);
+  /// pub.dev packages the selected permissions and storage need.
+  Map<String, String> _flutterPackages(PromptConfig c) {
     final perms = _effectivePermissions(c);
-    final packages = {
-      'provider': Toolchain.flutterPackages['provider']!,
-      if (c.storage == StorageKind.keyValue) 'shared_preferences': Toolchain.flutterPackages['shared_preferences']!,
-      if (c.storage == StorageKind.database) ...{
-        'sqflite': Toolchain.flutterPackages['sqflite']!,
-        'path': Toolchain.flutterPackages['path']!,
+    final v = Toolchain.flutterPackages;
+    return {
+      'provider': v['provider']!,
+      if (c.storage == StorageKind.keyValue) 'shared_preferences': v['shared_preferences']!,
+      if (c.storage == StorageKind.database) ...{'sqflite': v['sqflite']!, 'path': v['path']!},
+      if (perms.contains(AppPermission.camera) || perms.contains(AppPermission.storage)) 'image_picker': v['image_picker']!,
+      if (perms.contains(AppPermission.location)) 'geolocator': v['geolocator']!,
+      if (perms.contains(AppPermission.internet) || perms.contains(AppPermission.wifi)) ...{
+        'http': v['http']!,
+        'connectivity_plus': v['connectivity_plus']!,
       },
-      if (perms.contains(AppPermission.camera)) 'image_picker': Toolchain.flutterPackages['image_picker']!,
-      if (perms.contains(AppPermission.location)) 'geolocator': Toolchain.flutterPackages['geolocator']!,
-      if (perms.contains(AppPermission.internet)) 'http': Toolchain.flutterPackages['http']!,
+      if (perms.contains(AppPermission.wifi)) 'network_info_plus': v['network_info_plus']!,
+      if (c.isIphone) ...{'url_launcher': v['url_launcher']!, 'share_plus': v['share_plus']!, 'path_provider': v['path_provider']!},
+      if (c.isIphone && perms.contains(AppPermission.storage)) 'file_picker': v['file_picker']!,
     };
+  }
 
+  void _flutterStructure(StringBuffer b, PromptConfig c) {
     b.writeln('## Структура ZIP-архива (строго, файлы в корне архива)');
     b.writeln();
     _codeBlock(b, '', [
@@ -698,20 +711,22 @@ ${permissionXml.isEmpty ? '' : '$permissionXml\n'}
       'lib/main.dart                 ← MaterialApp, тема, провайдеры',
       'lib/models/…                  ← модели данных',
       if (c.storage != StorageKind.none) 'lib/data/…                    ← хранение данных (репозиторий)',
+      'lib/services/…                ← работа с сетью и устройством',
       'lib/state/…                   ← ChangeNotifier-контроллеры (provider)',
       'lib/screens/…                 ← экраны',
       'lib/widgets/…                 ← переиспользуемые виджеты',
     ].join('\n'));
     b.writeln('**Не создавай** папки `android/`, `ios/`, `web/`, файлы `pubspec.lock` и иконки: сборщик сам выполнит '
-        '`flutter create`, пропишет пакет `${c.packageName}`, название, версию, разрешения и иконку.');
+        '`flutter create`, пропишет ${c.isIphone ? 'bundle id' : 'пакет'} `${c.packageName}`, название, версию, '
+        'разрешения и иконку.');
     b.writeln();
-    b.writeln('## appbuilder.json (положи в корень)');
-    b.writeln();
-    _codeBlock(b, 'json', _json.convert(_appBuilderJson(c, web: {'themeColor': c.themeColor, 'backgroundColor': '#FFFFFF'})));
+  }
+
+  void _pubspec(StringBuffer b, PromptConfig c, Map<String, String> packages) {
     b.writeln('## pubspec.yaml (основа)');
     b.writeln();
     _codeBlock(b, 'yaml', [
-      'name: $name',
+      'name: ${_dartName(c)}',
       'description: ${c.appName}',
       "publish_to: 'none'",
       'version: ${c.versionName}+1',
@@ -732,12 +747,36 @@ ${permissionXml.isEmpty ? '' : '$permissionXml\n'}
       'flutter:',
       '  uses-material-design: true',
     ].join('\n'));
-    b.writeln('Другие пакеты добавляй, только если они нужны, поддерживают Android **и** iOS и ты уверен, что '
-        'указанная версия существует на pub.dev. Проверенные версии: '
-        '${Toolchain.flutterPackages.entries.map((e) => '`${e.key}: ${e.value}`').join(', ')}.');
+    b.writeln('Другие пакеты добавляй, только если они действительно нужны, поддерживают '
+        '${c.isIphone ? '**iOS**' : '**Android**'} и ты уверен, что указанная версия существует на pub.dev. '
+        'Проверенные версии: ${Toolchain.flutterPackages.entries.map((e) => '`${e.key}: ${e.value}`').join(', ')}.');
     b.writeln();
     b.writeln('`analysis_options.yaml`: `include: package:flutter_lints/flutter.yaml`.');
     b.writeln();
+  }
+
+  List<String> _flutterStorageRules(PromptConfig c) => switch (c.storage) {
+        StorageKind.none => const ['Постоянное хранение не требуется.'],
+        StorageKind.keyValue => const [
+            '`shared_preferences` (`SharedPreferencesAsync`), сложные структуры — JSON (`dart:convert`).',
+            'Сохраняй сразу при изменении, загружай при старте до показа данных (индикатор загрузки, пока читаются данные).',
+          ],
+        StorageKind.database => [
+            'SQLite через `sqflite`: база `${_slug(c)}.db` в `getDatabasesPath()` (`path.join`), версия 1, `onCreate`/`onUpgrade`.',
+            'Репозиторий с реальными CRUD-операциями, параметризованные запросы (`whereArgs`), транзакции для пакетных изменений.',
+          ],
+      };
+
+  // ------------------------------------------------------- profile D: Android
+
+  void _flutter(StringBuffer b, PromptConfig c) {
+    final name = _dartName(c);
+    final perms = _effectivePermissions(c);
+    _flutterStructure(b, c);
+    b.writeln('## appbuilder.json (положи в корень)');
+    b.writeln();
+    _codeBlock(b, 'json', _json.convert(_appBuilderJson(c, web: {'themeColor': c.themeColor, 'backgroundColor': '#FFFFFF'})));
+    _pubspec(b, c, _flutterPackages(c));
 
     b.writeln('## Технические правила');
     b.writeln();
@@ -745,39 +784,208 @@ ${permissionXml.isEmpty ? '' : '$permissionXml\n'}
       'Flutter ${Toolchain.flutter}, Dart ${Toolchain.flutterDart}, null safety, Material 3 (`useMaterial3: true`), '
           '`ColorScheme.fromSeed(seedColor: Color(0xFF${c.themeColor.substring(1)}))`, светлая и тёмная тема (`themeMode: ThemeMode.system`).',
       'Состояние — `provider` (`ChangeNotifierProvider` / `MultiProvider`, `context.watch` / `context.read`).',
-      'Импорты своих файлов — `package:$name/…`. Код без устаревших API (без `WillPopScope`, `withOpacity` → `withValues`).',
-      'Интерфейс адаптивный: `SafeArea`, прокрутка длинных экранов, без фиксированных размеров под один телефон.',
-      'Работает на Android и iOS: без `dart:html`, без пакетов только для одной платформы; файлы — через `path_provider`.',
+      'Импорты своих файлов — `package:$name/…`. Код без устаревших API (без `WillPopScope` → `PopScope`, `withOpacity` → `withValues`).',
+      'Интерфейс адаптивный: `SafeArea`, прокрутка длинных экранов, без фиксированных размеров под один телефон; '
+          'системная кнопка «Назад» Android закрывает диалоги и экраны.',
+      'Android ${Toolchain.minSdk}+ (Android 7.0): файлы — через `path_provider`, без `dart:html`.',
       'Язык интерфейса: ${c.uiLanguage.title}. Тексты — прямо в виджетах (без генерации l10n).',
       if (c.orientation != ScreenOrientation.sensor)
-        'Ориентацию сборщик задаёт в манифестах; дополнительно вызови `SystemChrome.setPreferredOrientations` в `main()`.',
+        'Ориентацию сборщик задаёт в манифесте; дополнительно вызови `SystemChrome.setPreferredOrientations` в `main()`.',
     ]);
 
     b.writeln('## Хранение данных');
     b.writeln();
-    _bullets(b, switch (c.storage) {
-      StorageKind.none => const ['Постоянное хранение не требуется.'],
-      StorageKind.keyValue => const [
-          '`shared_preferences` (`SharedPreferences.getInstance()` / `SharedPreferencesAsync`), сложные структуры — JSON (`dart:convert`).',
-          'Сохраняй сразу при изменении, загружай при старте до показа данных (индикатор загрузки, пока читаются данные).',
-        ],
-      StorageKind.database => [
-          'SQLite через `sqflite`: база `${_slug(c)}.db` в `getDatabasesPath()` (`path.join`), версия 1, `onCreate`/`onUpgrade`.',
-          'Репозиторий с реальными CRUD-операциями, параметризованные запросы (`whereArgs`).',
-        ],
-    });
+    _bullets(b, _flutterStorageRules(c));
 
     final runtime = <String>[
       if (perms.contains(AppPermission.camera)) 'Камера и фото: `image_picker` (`ImagePicker().pickImage(source: ImageSource.camera)`).',
       if (perms.contains(AppPermission.location))
-        'Геолокация: `geolocator` — `checkPermission`/`requestPermission`, затем `getCurrentPosition`.',
-      if (perms.contains(AppPermission.internet)) 'Сеть: `http` с таймаутами и обработкой ошибок (сообщение пользователю, кнопка «Повторить»).',
-      'Разрешения уже перечислены в appbuilder.json — сборщик добавит их в AndroidManifest.xml и Info.plist. '
+        'Геолокация: `geolocator` — `isLocationServiceEnabled`, `checkPermission`/`requestPermission`, затем `getCurrentPosition`.',
+      if (perms.contains(AppPermission.internet))
+        'Сеть: `http` с таймаутами (`.timeout`) и обработкой `SocketException`/`TimeoutException` (сообщение и кнопка «Повторить»); '
+            'тип подключения — `connectivity_plus`.',
+      if (perms.contains(AppPermission.wifi)) ...[
+        'Wi-Fi: `network_info_plus` — `getWifiIP()`, `getWifiSubmask()`, `getWifiGatewayIP()`; `getWifiName()` (SSID) требует '
+            'разрешения на геолокацию и включённой геолокации, иначе вернёт null — обрабатывай null.',
+        'Локальная сеть: `dart:io` `Socket.connect(host, port, timeout: …)` и `http` к IP-адресам устройств; сканируй подсеть '
+            'пачками по 32–64 адреса, отменяй сканирование при уходе с экрана.',
+      ],
+      'Разрешения уже перечислены в appbuilder.json — сборщик добавит их в AndroidManifest.xml. '
           'Отказ пользователя обрабатывай: объясни и не падай.',
     ];
     b.writeln('## Разрешения и API устройства');
     b.writeln();
     _bullets(b, runtime);
+  }
+
+  // -------------------------------------------------------- profile D: iPhone
+
+  /// Info.plist usage descriptions the selected permissions need (the AI
+  /// rewrites the texts for the actual app).
+  Map<String, Object> _iosInfoPlist(PromptConfig c) {
+    final p = _effectivePermissions(c);
+    return {
+      if (p.contains(AppPermission.camera)) 'NSCameraUsageDescription': 'Камера нужна, чтобы <зачем именно>.',
+      if (p.contains(AppPermission.camera) || p.contains(AppPermission.storage)) ...{
+        'NSPhotoLibraryUsageDescription': 'Доступ к фото нужен, чтобы <зачем именно>.',
+        'NSPhotoLibraryAddUsageDescription': 'Приложение сохраняет <что> в «Фото».',
+      },
+      if (p.contains(AppPermission.location) || p.contains(AppPermission.wifi))
+        'NSLocationWhenInUseUsageDescription': 'Геопозиция нужна, чтобы <зачем именно>.',
+      if (p.contains(AppPermission.microphone)) 'NSMicrophoneUsageDescription': 'Микрофон нужен, чтобы <зачем именно>.',
+      if (p.contains(AppPermission.wifi)) 'NSLocalNetworkUsageDescription': 'Доступ к локальной сети нужен, чтобы <зачем именно>.',
+      if (p.contains(AppPermission.storage)) ...{'UIFileSharingEnabled': true, 'LSSupportsOpeningDocumentsInPlace': true},
+    };
+  }
+
+  void _iphone(StringBuffer b, PromptConfig c) {
+    final name = _dartName(c);
+    final p = _effectivePermissions(c);
+    final plist = _iosInfoPlist(c);
+    _flutterStructure(b, c);
+
+    b.writeln('## appbuilder.json (положи в корень)');
+    b.writeln();
+    _codeBlock(
+        b,
+        'json',
+        _json.convert({
+          ..._appBuilderJson(c, web: {'themeColor': c.themeColor, 'backgroundColor': '#FFFFFF'}),
+          if (plist.isNotEmpty) 'ios': {'infoPlist': plist},
+        }));
+    if (plist.isNotEmpty) {
+      b.writeln('`ios.infoPlist` попадёт в Info.plist приложения. **Перепиши каждый текст** `<…>` конкретно под это '
+          'приложение (${c.uiLanguage.title}, 1 предложение: что и зачем) — iOS показывает его в системном окне запроса '
+          'доступа. Без описания iOS аварийно закрывает приложение при первом обращении к камере, фото, геопозиции, '
+          'микрофону или локальной сети. Добавляй только ключи, которые реально используются.');
+      b.writeln();
+    }
+    _pubspec(b, c, _flutterPackages(c));
+
+    b.writeln('## Как проект станет .ipa (учитывай ограничения)');
+    b.writeln();
+    _bullets(b, [
+      'Сборщик на macOS выполнит `flutter create --platforms=ios`, пропишет bundle id, название (CFBundleDisplayName), '
+          'версию, ориентацию, иконку и ключи `ios.infoPlist`, затем `flutter build ios --release --no-codesign`. '
+          'Получится настоящее нативное приложение iOS (Flutter + Xcode), не веб-страница.',
+      'Минимальная версия — iOS 13. Плагины подключаются через CocoaPods автоматически — бери только пакеты с поддержкой iOS.',
+      '.ipa не подписан: пользователь устанавливает его через Sideloadly под своим Apple ID (бесплатный аккаунт — '
+          'приложение работает 7 дней, затем переустанавливается). Поэтому **недоступно** всё, что требует платного '
+          'аккаунта Apple Developer или особых entitlements: push-уведомления (APNs/Firebase Messaging), iCloud, '
+          'Sign in with Apple, Apple Pay, HealthKit, App Groups, виджеты и расширения, NFC-запись, Hotspot Configuration, '
+          'multicast-сеть. Не используй их и не предлагай.',
+      'Нельзя писать нативный Swift/Objective-C код, AppDelegate, Podfile, entitlements — только Dart и плагины pub.dev.',
+      'Не используй `permission_handler`: на iOS он требует правки Podfile (макросы `PERMISSION_…`), без них всегда '
+          'возвращает «запрещено». Запрашивай доступ средствами самих плагинов (`Geolocator.requestPermission()`, '
+          '`MobileScanner`, `ImagePicker`).',
+    ]);
+
+    b.writeln('## Интерфейс в стиле iPhone');
+    b.writeln();
+    _bullets(b, [
+      'Flutter ${Toolchain.flutter}, Dart ${Toolchain.flutterDart}, null safety. Material 3 (`useMaterial3: true`, '
+          '`ColorScheme.fromSeed(seedColor: Color(0xFF${c.themeColor.substring(1)}))`) с iOS-поведением: светлая и тёмная '
+          'тема по системе (`themeMode: ThemeMode.system`), шрифт системный (San Francisco) — не подключай свои шрифты без нужды.',
+      'Адаптивные элементы: `Switch.adaptive`, `Slider.adaptive`, `CircularProgressIndicator.adaptive`, '
+          '`showAdaptiveDialog` + `AlertDialog.adaptive`, `TextButton`; меню действий — `CupertinoActionSheet` '
+          '(`showCupertinoModalPopup`), выбор даты — `CupertinoDatePicker`.',
+      'Навигация: `NavigationBar` внизу для 2–5 разделов, переходы `Navigator.push(MaterialPageRoute(...))` — на iOS '
+          'они анимируются как в iPhone и закрываются свайпом от левого края. Аппаратной кнопки «Назад» нет: на каждом '
+          'вложенном экране — кнопка назад в AppBar (появляется сама), не блокируй свайп без причины '
+          '(`PopScope` — только для подтверждения потери несохранённых данных).',
+      '`SafeArea` / `MediaQuery.paddingOf` для чёлки, Dynamic Island и полосы «домой»; содержимое не прячется под ними. '
+          'Крупные заголовки — `SliverAppBar.large` на главных экранах-списках.',
+      'Клавиатура: `TextInputAction.next/done`, закрытие тапом вне поля (`FocusScope.of(context).unfocus()`) и '
+          'прокруткой (`keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag`); поля не перекрываются клавиатурой.',
+      'Размеры: от iPhone SE (375×667) до Pro Max (440×956), элементы касания ≥ 44 pt; поддержка крупного шрифта '
+          '(Dynamic Type) — без фиксированной высоты текстовых блоков и без переполнения при `textScaler` 1.5.',
+      'Отклик: `HapticFeedback.selectionClick()` / `lightImpact()` на важные действия; анимации 200–300 мс.',
+      'Приложение никогда не закрывает себя (`exit(0)` запрещён правилами Apple; `SystemNavigator.pop()` на iOS не работает).',
+      'Импорты своих файлов — `package:$name/…`. Без устаревших API (`WillPopScope` → `PopScope`, `withOpacity` → `withValues`). '
+          'Тяжёлые вычисления — `Isolate.run`, длинные списки — `ListView.builder`.',
+      'Язык интерфейса: ${c.uiLanguage.title}. Тексты — прямо в виджетах (без генерации l10n).',
+      if (c.orientation != ScreenOrientation.sensor)
+        'Ориентацию сборщик задаёт в Info.plist; дополнительно вызови `SystemChrome.setPreferredOrientations` в `main()`.',
+    ]);
+
+    b.writeln('## Жизненный цикл и фоновая работа на iOS');
+    b.writeln();
+    _bullets(b, const [
+      'Через несколько секунд после сворачивания iOS приостанавливает приложение: таймеры, сокеты, загрузки и `Future` '
+          'замирают, а система может завершить его без предупреждения. Фоновых сервисов, как на Android, нет.',
+      'Долгие операции (сканирование сети, синхронизация, загрузки) выполняй, пока приложение на экране; '
+          '`WidgetsBindingObserver.didChangeAppLifecycleState`: при `paused` останавливай работу и сохраняй состояние, '
+          'при `resumed` — обновляй данные и продолжай.',
+      'Всё важное сохраняй сразу, а не при закрытии: события закрытия на iOS не гарантированы.',
+    ]);
+
+    b.writeln('## Хранение данных');
+    b.writeln();
+    _bullets(b, [
+      ..._flutterStorageRules(c),
+      'Файлы — только в песочнице приложения: `getApplicationDocumentsDirectory()` (данные пользователя, попадают в '
+          'резервную копию), `getApplicationCacheDirectory()` (временное). Общих папок вроде «Загрузок» на iOS нет.',
+      'Экспорт файла — через меню «Поделиться»: `SharePlus.instance.share(ShareParams(files: [XFile(path)], '
+          'sharePositionOrigin: …))` (сохранить в «Файлы», AirDrop, мессенджеры); `sharePositionOrigin` обязателен на iPad.',
+    ]);
+
+    final network = <String>[
+      if (p.contains(AppPermission.internet) || p.contains(AppPermission.wifi)) ...[
+        'HTTP: `package:http` с `.timeout(const Duration(seconds: 15))`; обрабатывай `SocketException`, `TimeoutException`, '
+            '`HandshakeException`, коды ответа ≠ 2xx — понятное сообщение и кнопка «Повторить». Предпочитай HTTPS.',
+        'Тип подключения: `Connectivity().checkConnectivity()` возвращает `List<ConnectivityResult>` (wifi / mobile / '
+            'none), изменения — `onConnectivityChanged`. Это тип интерфейса, а не наличие интернета: доступность '
+            'проверяй реальным запросом.',
+      ],
+      if (p.contains(AppPermission.wifi)) ...[
+        '**Локальная сеть (iOS 14+).** При первом подключении к устройству в локальной сети iOS показывает окно '
+            '«Приложение хочет находить устройства в локальной сети» с текстом `NSLocalNetworkUsageDescription`. '
+            'Вызывай первое обращение осознанно (по кнопке «Найти устройства»), а не при запуске. Пока доступ не дан '
+            'или если он запрещён, подключения падают с `SocketException` (No route to host / errno 65): API проверки '
+            'статуса нет — распознавай отказ по ошибке и показывай инструкцию: «Настройки → Конфиденциальность и '
+            'безопасность → Локальная сеть → включите ${c.appName}».',
+        'Параметры Wi-Fi: `NetworkInfo()` из `network_info_plus` — `getWifiIP()`, `getWifiSubmask()`, '
+            '`getWifiGatewayIP()`, `getWifiBroadcast()` работают без дополнительных прав. Из IP и маски вычисляй подсеть.',
+        'Название сети (SSID) и BSSID: `getWifiName()` / `getWifiBSSID()` на iOS требуют разрешения на геопозицию '
+            '**и** entitlement «Access WiFi Information», которого нет у неподписанного .ipa — на установленном через '
+            'Sideloadly приложении они обычно возвращают null. Обязательно обрабатывай null («Название сети недоступно '
+            'на iPhone») и не делай функции зависимыми от SSID.',
+        'Поиск устройств: multicast и broadcast (UDP 255.255.255.255, SSDP, ONVIF WS-Discovery, mDNS без списка служб) '
+            'на iOS требуют entitlement `com.apple.developer.networking.multicast` — **недоступен**. Ищи устройства '
+            'unicast-перебором подсети: `Socket.connect(ip, port, timeout: const Duration(milliseconds: 500))` пачками '
+            'по 32–64 адреса (не 254 одновременно — у iOS ограничено число сокетов), с прогрессом, кнопкой «Стоп» и '
+            'закрытием каждого сокета (`destroy()`). Затем проверяй найденные адреса HTTP-запросом.',
+        'Bonjour (если без него нельзя): все типы служб перечисли в `ios.infoPlist` → `NSBonjourServices` '
+            '(например `["_http._tcp"]`), иначе iOS блокирует поиск.',
+        'HTTP к устройствам в локальной сети разрешён: сборщик добавит в Info.plist `NSAppTransportSecurity → '
+            'NSAllowsLocalNetworking`. Для HTTP к внешним сайтам — только HTTPS.',
+        'Программно включить/выключить Wi-Fi, получить список сетей или подключиться к сети на iOS **нельзя** '
+            '(публичного API нет). Вместо этого — инструкция и кнопка «Открыть настройки»: '
+            '`launchUrl(Uri.parse(\'app-settings:\'))` (`url_launcher`).',
+        'В iOS Simulator параметры Wi-Fi возвращают null — интерфейс должен оставаться рабочим.',
+      ],
+      if (p.contains(AppPermission.location))
+        'Геопозиция: `geolocator` — `isLocationServiceEnabled()`, `checkPermission()`/`requestPermission()` в момент, '
+            'когда она нужна; `deniedForever` → объяснение и `Geolocator.openAppSettings()`. Фоновая геолокация не нужна.',
+      if (p.contains(AppPermission.camera))
+        'Камера: фото — `image_picker` (`ImageSource.camera`); QR и штрихкоды — `mobile_scanner: '
+            '${Toolchain.flutterPackages['mobile_scanner']}` (`MobileScanner` + `MobileScannerController`, остановка при '
+            'уходе с экрана и в `paused`). Отказ в доступе → объяснение и кнопка «Открыть настройки».',
+      if (p.contains(AppPermission.storage))
+        'Фото и файлы: выбор из галереи — `image_picker` (`ImageSource.gallery`), документы — `file_picker`; '
+            '`UIFileSharingEnabled` делает папку Documents видимой в приложении «Файлы».',
+      if (p.contains(AppPermission.microphone))
+        'Микрофон: описание `NSMicrophoneUsageDescription` уже в `ios.infoPlist`; используй пакет записи только с поддержкой iOS.',
+      if (p.contains(AppPermission.vibration)) 'Вибрация: `HapticFeedback` (`lightImpact`, `mediumImpact`, `heavyImpact`, `vibrate`).',
+      if (p.contains(AppPermission.notifications))
+        'Уведомления: push недоступны (нужен платный аккаунт). Показывай события внутри приложения (баннер, '
+            '`SnackBar`, бейдж на вкладке) — не обещай уведомления при закрытом приложении.',
+      'Версия приложения и модель устройства (экран «О приложении»): `package_info_plus`, `device_info_plus` — если нужны.',
+      'Каждый отказ в доступе обрабатывай: объясни, что не будет работать, и дай кнопку «Открыть настройки»; приложение не падает.',
+    ];
+    b.writeln('## Сеть, Wi-Fi и возможности устройства на iPhone');
+    b.writeln();
+    _bullets(b, network);
   }
 
   // ------------------------------------------------------------ final parts
@@ -788,10 +996,15 @@ ${permissionXml.isEmpty ? '' : '$permissionXml\n'}
     _bullets(b, [
       'Заглушки, моки, фейковые данные, «TODO», «// остальной код», имитация загрузки через таймеры вместо реальной логики.',
       'Папка-обёртка верхнего уровня в архиве; `node_modules/`, `dist/`, `build/`, `.git/`, ключи подписи.',
-      if (c.appType.usesWebView) 'Абсолютные пути (`/app.js`), `file://`, CDN-ссылки, `http://`.',
-      if (c.appType.isNative) 'Gradle-файлы, `local.properties`, иконки `ic_launcher`, атрибут `package` в манифесте.',
-      if (c.appType.isFlutter)
+      if (c.effectiveType.usesWebView) 'Абсолютные пути (`/app.js`), `file://`, CDN-ссылки, `http://`.',
+      if (c.effectiveType.isNative) 'Gradle-файлы, `local.properties`, иконки `ic_launcher`, атрибут `package` в манифесте.',
+      if (c.effectiveType.isFlutter)
         'Папки `android/`, `ios/`, `build/`, `.dart_tool/`, файл `pubspec.lock`, иконки и нативный код — их создаёт сборщик.',
+      if (c.isIphone) ...[
+        '`permission_handler`, Firebase Messaging и другие push-уведомления, iCloud, плагины без поддержки iOS.',
+        'Android-приёмы на iPhone: аппаратная кнопка «Назад», фоновые сервисы, broadcast/multicast-поиск, '
+            'включение Wi-Fi из приложения, `exit(0)`.',
+      ],
       'Выдуманные API-ключи и адреса. Если нужен ключ — сделай поле ввода в настройках.',
       'Сокращение файлов: каждый файл выводится целиком.',
     ]);
@@ -823,7 +1036,7 @@ ${permissionXml.isEmpty ? '' : '$permissionXml\n'}
     final items = [
       'Все файлы из структуры созданы, ни один не сокращён.',
       '`appbuilder.json` совпадает с приведённым выше (пакет `${c.packageName}`).',
-      if (c.appType.usesWebView) ...[
+      if (c.effectiveType.usesWebView) ...[
         'Все ссылки в HTML/CSS/JS относительные (`./…`), внешних CDN нет.',
         'Манифест подключён, `icon.svg` существует.',
       ],
@@ -831,15 +1044,24 @@ ${permissionXml.isEmpty ? '' : '$permissionXml\n'}
         '`npm run build` создаёт `dist/index.html`; `base: \'./\'`; роутинг через hash.',
         'Все импортируемые пакеты перечислены в package.json.',
       ],
-      if (c.appType.isNative) ...[
+      if (c.effectiveType.isNative) ...[
         'Все `.kt` файлы начинаются с `package ${c.packageName}…`, импорты существуют в подключённых библиотеках.',
         'Каждый ресурс, на который ссылается код (`R.layout`, `R.string`, `R.id`, `@style/Theme.App`), объявлен.',
         'Код компилируется Kotlin ${Toolchain.kotlin} без ошибок: нет устаревших/удалённых API, все `@OptIn` проставлены.',
       ],
-      if (c.appType.isFlutter) ...[
+      if (c.effectiveType.isFlutter) ...[
         '`pubspec.yaml`: `name: ${_dartName(c)}`, `version: ${c.versionName}+1`, все импортируемые пакеты перечислены.',
         'Импорты своих файлов — `package:${_dartName(c)}/…`; код проходит `flutter analyze` без ошибок на Flutter ${Toolchain.flutter}.',
-        'Нет `dart:html`, `dart:io`-путей без `path_provider`, Android- или iOS-only пакетов.',
+        if (c.isIphone)
+          'Нет `dart:html` и пакетов без поддержки iOS; файлы — через `path_provider`.'
+        else
+          'Нет `dart:html` и пакетов без поддержки Android; файлы — через `path_provider`.',
+      ],
+      if (c.isIphone) ...[
+        'В `ios.infoPlist` все тексты `<…>` заменены конкретными объяснениями, лишних ключей нет.',
+        'Интерфейс проверен мысленно на iPhone SE и Pro Max: ничего не перекрыто чёлкой, клавиатурой и полосой «домой», '
+            'на каждом вложенном экране есть путь назад.',
+        'Отказ в любом доступе, null вместо названия Wi-Fi и сворачивание приложения во время работы не ломают его.',
       ],
       'Данные действительно сохраняются и восстанавливаются после перезапуска.',
       'Каждая кнопка и экран выполняют реальное действие.',

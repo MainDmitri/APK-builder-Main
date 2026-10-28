@@ -11,6 +11,7 @@ import '../workspace.dart';
 import 'icons.dart';
 import 'ios_shell.dart';
 import 'manifest_tools.dart';
+import 'plist.dart';
 import 'templates.dart';
 
 /// Flutter projects (profile D): creates missing platform folders with
@@ -224,6 +225,9 @@ class FlutterStage {
       'NSPhotoLibraryUsageDescription': 'Приложению нужен доступ к фотографиям.',
       'NSPhotoLibraryAddUsageDescription': 'Приложение сохраняет файлы в «Фото».',
     },
+    AppPermission.wifi: {
+      'NSLocalNetworkUsageDescription': 'Приложению нужен доступ к устройствам в вашей локальной сети.',
+    },
   };
 
   Future<void> _ios(String projectDir, ResolvedAppConfig app, BuildLog log,
@@ -251,8 +255,12 @@ class FlutterStage {
       plist = setPlistString(plist, 'CFBundleDisplayName', app.appName);
       for (final permission in app.permissions) {
         for (final entry in (_usageDescriptions[permission] ?? const <String, String>{}).entries) {
-          if (!plist.contains('<key>${entry.key}</key>')) plist = setPlistString(plist, entry.key, entry.value);
+          if (!PlistEditor.hasKey(plist, entry.key)) plist = PlistEditor.set(plist, entry.key, entry.value);
         }
+      }
+      // HTTP to devices in the local network (WebView, url_launcher, NSURLSession-based plugins).
+      if (app.permissions.contains(AppPermission.wifi) && !PlistEditor.hasKey(plist, 'NSAppTransportSecurity')) {
+        plist = PlistEditor.set(plist, 'NSAppTransportSecurity', const {'NSAllowsLocalNetworking': true});
       }
       if (app.orientation != ScreenOrientation.sensor) {
         final keys = app.orientation == ScreenOrientation.portrait ? const ['portrait'] : const ['left', 'right'];
@@ -261,8 +269,12 @@ class FlutterStage {
         plist = setPlistStringArray(
             plist, 'UISupportedInterfaceOrientations~ipad', ipadKeys.map((k) => _orientationKeys[k]!).toList());
       }
+      for (final entry in app.iosInfoPlist.entries) {
+        plist = PlistEditor.set(plist, entry.key, entry.value);
+      }
       plistFile.writeAsStringSync(plist);
-      log.add('Info.plist: название «${app.appName}», ориентация ${app.orientation.id}');
+      log.add('Info.plist: название «${app.appName}», ориентация ${app.orientation.id}'
+          '${app.iosInfoPlist.isEmpty ? '' : ', из appbuilder.json: ${app.iosInfoPlist.keys.join(', ')}'}');
     }
 
     if (icon) {
@@ -285,25 +297,7 @@ class FlutterStage {
   }
 
   /// Sets `<key>` → `<string>` in an XML property list (top-level dict).
-  static String setPlistString(String plist, String key, String value) {
-    final escaped = plistEscape(value);
-    final existing = RegExp('<key>${RegExp.escape(key)}</key>\\s*<string>[^<]*</string>');
-    if (existing.hasMatch(plist)) {
-      return plist.replaceFirst(existing, '<key>$key</key>\n\t<string>$escaped</string>');
-    }
-    return _insertBeforeDictEnd(plist, '\t<key>$key</key>\n\t<string>$escaped</string>\n');
-  }
+  static String setPlistString(String plist, String key, String value) => PlistEditor.set(plist, key, value);
 
-  static String setPlistStringArray(String plist, String key, List<String> values) {
-    final items = values.map((v) => '\t\t<string>$v</string>').join('\n');
-    final block = '<key>$key</key>\n\t<array>\n$items\n\t</array>';
-    final existing = RegExp('<key>${RegExp.escape(key)}</key>\\s*<array>.*?</array>', dotAll: true);
-    if (existing.hasMatch(plist)) return plist.replaceFirst(existing, block);
-    return _insertBeforeDictEnd(plist, '\t$block\n');
-  }
-
-  static String _insertBeforeDictEnd(String plist, String entry) {
-    final end = plist.lastIndexOf('</dict>');
-    return end < 0 ? plist : plist.replaceRange(end, end, entry);
-  }
+  static String setPlistStringArray(String plist, String key, List<String> values) => PlistEditor.set(plist, key, values);
 }

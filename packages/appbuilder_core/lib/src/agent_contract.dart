@@ -15,7 +15,8 @@ String buildAgentContract() {
       AppPermission.camera => '`getUserMedia({video})`',
       AppPermission.microphone => '`getUserMedia({audio})`',
       AppPermission.vibration => '`navigator.vibrate()`',
-      AppPermission.notifications => 'не поддерживается WebView (только профиль C)',
+      AppPermission.notifications => 'не поддерживается WebView (профили C и D)',
+      AppPermission.wifi => 'не поддерживается WebView (профили C и D); на iPhone — доступ к локальной сети',
     };
     return '| `${p.id}` | $android | $web |';
   }).join('\n');
@@ -110,6 +111,12 @@ appbuilder.json
   "android": {
     "compose": true,
     "dependencies": ["io.coil-kt:coil-compose:2.7.0"]
+  },
+  "ios": {
+    "infoPlist": {
+      "NSLocalNetworkUsageDescription": "Поиск камер в вашей сети Wi-Fi",
+      "NSBonjourServices": ["_http._tcp"]
+    }
   }
 }
 ```
@@ -130,6 +137,7 @@ appbuilder.json
 | `web.openLinksExternally` | bool | Ссылки на другие домены открывать в браузере (по умолчанию `true`) |
 | `android.compose` | bool | Подключить Jetpack Compose (по умолчанию — автоопределение по импортам `androidx.compose`) |
 | `android.dependencies` | string[] | Доп. зависимости `group:artifact:version` (профиль C1) |
+| `ios.infoPlist` | object | Ключи Info.plist приложения для iPhone (профили A, B, D): описания доступа `NS…UsageDescription`, `NSBonjourServices`, `UIBackgroundModes`, `UIFileSharingEnabled`… Значения — строка, число, true/false, массив, объект. Идентификатор, версию, название и ориентацию задаёт движок |
 
 Приоритет значений: настройки сборки в UI/API → `appbuilder.json` → `manifest.json` → `package.json` → значения по умолчанию.
 
@@ -368,6 +376,11 @@ analysis_options.yaml   ← необязательно
 ${Toolchain.flutterPackages.entries.map((e) => '  `${e.key}: ${e.value}`').join(', ')}.
 - Разрешения перечисляются в `appbuilder.json` — движок добавит их в AndroidManifest.xml и описания
   (`NSCameraUsageDescription` и др.) в Info.plist; без описаний iOS закрывает приложение при запросе доступа.
+  Свои тексты описаний и другие ключи Info.plist — в `ios.infoPlist`; `wifi` добавляет
+  `NSLocalNetworkUsageDescription` и `NSAppTransportSecurity → NSAllowsLocalNetworking`.
+- `.ipa` не подписан: пользователь ставит его через Sideloadly под своим Apple ID. Возможности, которым нужен
+  платный аккаунт Apple Developer (push-уведомления APNs, iCloud, multicast, Hotspot, App Groups, расширения),
+  недоступны. Нативный код Swift/Objective-C, Podfile и AppDelegate не пишутся.
 - Без `pubspec.lock`, `build/`, `.dart_tool/`, Firebase-файлов (если Firebase не нужен) и нативного кода
   в `android/`/`ios/`, написанного вручную.
 - Иконку генерирует движок (буква на `theme_color`) или пользователь выбирает картинку в AppBuilder.

@@ -75,6 +75,10 @@ enum AppPermission {
     ManifestPermission('android.permission.ACCESS_FINE_LOCATION'),
     ManifestPermission('android.permission.ACCESS_COARSE_LOCATION'),
   ]),
+  wifi('wifi', 'Wi-Fi и локальная сеть', [
+    ManifestPermission('android.permission.ACCESS_WIFI_STATE'),
+    ManifestPermission('android.permission.CHANGE_WIFI_MULTICAST_STATE'),
+  ]),
   camera('camera', 'Камера', [ManifestPermission('android.permission.CAMERA')]),
   microphone('microphone', 'Микрофон', [
     ManifestPermission('android.permission.RECORD_AUDIO'),
@@ -221,6 +225,7 @@ class AppBuilderConfig {
     this.dependencies = const [],
     this.compose,
     this.androidPermissions = const [],
+    this.iosInfoPlist = const {},
   });
 
   final String? appName;
@@ -246,6 +251,51 @@ class AppBuilderConfig {
   /// (`android.permission.WAKE_LOCK`): added to the manifest of native and Flutter apps.
   final List<String> androidPermissions;
 
+  // ios.*
+  /// Extra Info.plist keys of the iPhone app (`ios.infoPlist`): usage
+  /// descriptions, NSBonjourServices, UIBackgroundModes…
+  final Map<String, Object> iosInfoPlist;
+
+  /// Info.plist keys the engine sets itself.
+  static const Set<String> reservedPlistKeys = {
+    'CFBundleIdentifier',
+    'CFBundleExecutable',
+    'CFBundleName',
+    'CFBundleDisplayName',
+    'CFBundlePackageType',
+    'CFBundleShortVersionString',
+    'CFBundleVersion',
+    'CFBundleInfoDictionaryVersion',
+    'LSRequiresIPhoneOS',
+    'UIApplicationSceneManifest',
+    'UIMainStoryboardFile',
+    'UILaunchStoryboardName',
+    'UISupportedInterfaceOrientations',
+    'UISupportedInterfaceOrientations~ipad',
+  };
+
+  /// Property list value: string, bool, number, array or dictionary (null if not representable).
+  static Object? plistValue(Object? value, [int depth = 0]) {
+    if (depth > 4) return null;
+    switch (value) {
+      case String() || bool() || int() || double():
+        return value;
+      case List():
+        final items = value.map((v) => plistValue(v, depth + 1)).toList();
+        return items.contains(null) ? null : items.cast<Object>();
+      case Map():
+        final result = <String, Object>{};
+        for (final e in value.entries) {
+          final v = plistValue(e.value, depth + 1);
+          if (e.key is! String || v == null) return null;
+          result[e.key as String] = v;
+        }
+        return result;
+      default:
+        return null;
+    }
+  }
+
   /// Parses appbuilder.json. Problems are appended to [errors] / [warnings].
   static AppBuilderConfig parse(String source, List<String> errors, List<String> warnings) {
     final Object? decoded;
@@ -260,6 +310,7 @@ class AppBuilderConfig {
       return const AppBuilderConfig();
     }
     final web = decoded['web'] is Map ? decoded['web'] as Map : const {};
+    final ios = decoded['ios'] is Map ? decoded['ios'] as Map : const {};
     final android = decoded['android'] is Map ? decoded['android'] as Map : const {};
 
     Set<AppPermission>? permissions;
@@ -292,6 +343,26 @@ class AppBuilderConfig {
       }
     }
 
+    final infoPlist = <String, Object>{};
+    final rawPlist = ios['infoPlist'];
+    if (rawPlist is Map) {
+      for (final e in rawPlist.entries) {
+        final key = e.key;
+        final value = plistValue(e.value);
+        if (key is! String || !RegExp(r'^[A-Za-z][A-Za-z0-9_.~-]*$').hasMatch(key)) {
+          warnings.add('appbuilder.json: ios.infoPlist — некорректный ключ «$key» пропущен.');
+        } else if (reservedPlistKeys.contains(key)) {
+          warnings.add('appbuilder.json: ios.infoPlist — ключ «$key» задаёт сборщик, он пропущен.');
+        } else if (value == null) {
+          warnings.add('appbuilder.json: ios.infoPlist — значение «$key» должно быть строкой, числом, true/false, массивом или объектом.');
+        } else {
+          infoPlist[key] = value;
+        }
+      }
+    } else if (rawPlist != null) {
+      errors.add('appbuilder.json: ios.infoPlist должен быть JSON-объектом.');
+    }
+
     final orientationRaw = decoded['orientation'];
     final orientation = ScreenOrientation.tryParse(orientationRaw as String?);
     if (orientationRaw != null && orientation == null) {
@@ -314,6 +385,7 @@ class AppBuilderConfig {
       dependencies: deps,
       compose: android['compose'] is bool ? android['compose'] as bool : null,
       androidPermissions: androidPermissions,
+      iosInfoPlist: infoPlist,
     );
   }
 }

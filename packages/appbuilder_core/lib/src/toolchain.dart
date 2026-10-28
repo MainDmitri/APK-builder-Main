@@ -32,6 +32,12 @@ abstract final class Toolchain {
     'file_picker': '^13.3.0',
     'image_picker': '^1.2.4',
     'geolocator': '^14.1.2',
+    'network_info_plus': '^8.2.2',
+    'connectivity_plus': '^7.3.2',
+    'share_plus': '^13.3.1',
+    'mobile_scanner': '^7.4.2',
+    'device_info_plus': '^13.3.0',
+    'package_info_plus': '^10.2.2',
   };
 
   /// Host the web shell serves bundled web assets from.

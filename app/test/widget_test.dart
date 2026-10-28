@@ -61,6 +61,34 @@ void main() {
     expect(find.textContaining('app/src/main/java/com/example/shoplist/MainActivity.kt'), findsWidgets);
   });
 
+  testWidgets('iPhone prompt: Flutter only, detailed iOS rules', (tester) async {
+    await pumpApp(tester, height: 7000);
+    await tester.tap(find.text('Промпты'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('iPhone'));
+    await tester.pumpAndSettle();
+    expect(find.text('Kotlin'), findsNothing);
+    expect(find.textContaining('настоящее нативное приложение на Flutter'), findsOneWidget);
+    await tester.tap(find.text('Далее').first);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.widgetWithText(TextField, 'Название приложения'), 'Cam Finder');
+    await tester.enterText(find.widgetWithText(TextField, 'Что должно делать приложение'),
+        'Поиск IP-камер в локальной сети Wi-Fi и проверка их портов.');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Параметры'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Wi-Fi и локальная сеть'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Мега-промпт'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('NSLocalNetworkUsageDescription'), findsWidgets);
+    expect(find.textContaining('## Интерфейс в стиле iPhone'), findsWidgets);
+    expect(find.textContaining('режим «Только IPA»'), findsOneWidget);
+  });
+
   testWidgets('contract screen shows the agent contract', (tester) async {
     await pumpApp(tester);
     await tester.tap(find.text('Контракт'));

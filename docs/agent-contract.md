@@ -84,6 +84,12 @@ appbuilder.json
   "android": {
     "compose": true,
     "dependencies": ["io.coil-kt:coil-compose:2.7.0"]
+  },
+  "ios": {
+    "infoPlist": {
+      "NSLocalNetworkUsageDescription": "Поиск камер в вашей сети Wi-Fi",
+      "NSBonjourServices": ["_http._tcp"]
+    }
   }
 }
 ```
@@ -104,6 +110,7 @@ appbuilder.json
 | `web.openLinksExternally` | bool | Ссылки на другие домены открывать в браузере (по умолчанию `true`) |
 | `android.compose` | bool | Подключить Jetpack Compose (по умолчанию — автоопределение по импортам `androidx.compose`) |
 | `android.dependencies` | string[] | Доп. зависимости `group:artifact:version` (профиль C1) |
+| `ios.infoPlist` | object | Ключи Info.plist приложения для iPhone (профили A, B, D): описания доступа `NS…UsageDescription`, `NSBonjourServices`, `UIBackgroundModes`, `UIFileSharingEnabled`… Значения — строка, число, true/false, массив, объект. Идентификатор, версию, название и ориентацию задаёт движок |
 
 Приоритет значений: настройки сборки в UI/API → `appbuilder.json` → `manifest.json` → `package.json` → значения по умолчанию.
 
@@ -114,10 +121,11 @@ appbuilder.json
 | `internet` | INTERNET, ACCESS_NETWORK_STATE | `fetch`, внешние ресурсы, удалённый `startUrl` |
 | `storage` | WRITE_EXTERNAL_STORAGE (≤ API 28), READ_EXTERNAL_STORAGE (≤ API 32) | не нужно для `<input type=file>` и скачиваний на Android 10+; совместимость со старыми версиями |
 | `location` | ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION | `navigator.geolocation` |
+| `wifi` | ACCESS_WIFI_STATE, CHANGE_WIFI_MULTICAST_STATE | не поддерживается WebView (профили C и D); на iPhone — доступ к локальной сети |
 | `camera` | CAMERA | `getUserMedia({video})` |
 | `microphone` | RECORD_AUDIO, MODIFY_AUDIO_SETTINGS | `getUserMedia({audio})` |
 | `vibration` | VIBRATE | `navigator.vibrate()` |
-| `notifications` | POST_NOTIFICATIONS | не поддерживается WebView (только профиль C) |
+| `notifications` | POST_NOTIFICATIONS | не поддерживается WebView (профили C и D) |
 
 ## 4. Профиль A — статический веб (HTML / CSS / JS)
 
@@ -361,9 +369,14 @@ analysis_options.yaml   ← необязательно
 - Пакет и название — из `appbuilder.json`; версия — `versionName`/`versionCode` (записываются в `version:` pubspec).
 - `name` в pubspec.yaml — строчные латинские буквы, цифры и `_`; импорты своих файлов — `package:<name>/…`.
 - Только пакеты pub.dev, поддерживающие Android **и** iOS, с существующими версиями. Проверенные:
-  `provider: ^6.1.5+1`,   `shared_preferences: ^2.5.6`,   `sqflite: ^2.4.5`,   `path: ^1.9.1`,   `path_provider: ^2.1.6`,   `http: ^1.6.0`,   `url_launcher: ^6.3.3`,   `file_picker: ^13.3.0`,   `image_picker: ^1.2.4`,   `geolocator: ^14.1.2`.
+  `provider: ^6.1.5+1`,   `shared_preferences: ^2.5.6`,   `sqflite: ^2.4.5`,   `path: ^1.9.1`,   `path_provider: ^2.1.6`,   `http: ^1.6.0`,   `url_launcher: ^6.3.3`,   `file_picker: ^13.3.0`,   `image_picker: ^1.2.4`,   `geolocator: ^14.1.2`,   `network_info_plus: ^8.2.2`,   `connectivity_plus: ^7.3.2`,   `share_plus: ^13.3.1`,   `mobile_scanner: ^7.4.2`,   `device_info_plus: ^13.3.0`,   `package_info_plus: ^10.2.2`.
 - Разрешения перечисляются в `appbuilder.json` — движок добавит их в AndroidManifest.xml и описания
   (`NSCameraUsageDescription` и др.) в Info.plist; без описаний iOS закрывает приложение при запросе доступа.
+  Свои тексты описаний и другие ключи Info.plist — в `ios.infoPlist`; `wifi` добавляет
+  `NSLocalNetworkUsageDescription` и `NSAppTransportSecurity → NSAllowsLocalNetworking`.
+- `.ipa` не подписан: пользователь ставит его через Sideloadly под своим Apple ID. Возможности, которым нужен
+  платный аккаунт Apple Developer (push-уведомления APNs, iCloud, multicast, Hotspot, App Groups, расширения),
+  недоступны. Нативный код Swift/Objective-C, Podfile и AppDelegate не пишутся.
 - Без `pubspec.lock`, `build/`, `.dart_tool/`, Firebase-файлов (если Firebase не нужен) и нативного кода
   в `android/`/`ios/`, написанного вручную.
 - Иконку генерирует движок (буква на `theme_color`) или пользователь выбирает картинку в AppBuilder.

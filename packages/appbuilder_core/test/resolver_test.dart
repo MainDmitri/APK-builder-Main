@@ -42,11 +42,31 @@ void main() {
     });
     expect(a.warnings.where((w) => w.contains('разрешение')), ['appbuilder.json: неизвестное разрешение «bluetooth-ish» пропущено.']);
     final r = ResolvedAppConfig.resolve(a, const BuildOptions());
-    expect(r.permissions, {AppPermission.internet, AppPermission.location, AppPermission.notifications});
-    expect(r.extraAndroidPermissions, ['android.permission.WAKE_LOCK', 'android.permission.ACCESS_WIFI_STATE']);
+    // ACCESS_WIFI_STATE is covered by the wifi permission.
+    expect(r.permissions, {AppPermission.internet, AppPermission.location, AppPermission.notifications, AppPermission.wifi});
+    expect(r.extraAndroidPermissions, ['android.permission.WAKE_LOCK']);
     expect(r.manifestPermissions.map((m) => m.name), containsAll(['android.permission.ACCESS_COARSE_LOCATION', 'android.permission.WAKE_LOCK']));
     expect(AppPermission.tryParse('camera'), AppPermission.camera);
     expect(AppPermission.tryParse('android.permission.CAMERA'), AppPermission.camera);
+  });
+
+  test('ios.infoPlist: keys and values are checked, reserved keys stay with the engine', () {
+    final a = analyzeFiles({
+      'index.html': '',
+      'appbuilder.json': '{"permissions":["wifi"],"ios":{"infoPlist":{'
+          '"NSLocalNetworkUsageDescription":"Поиск камер","NSBonjourServices":["_http._tcp"],'
+          '"UIFileSharingEnabled":true,"NSAppTransportSecurity":{"NSAllowsLocalNetworking":true},'
+          '"CFBundleIdentifier":"x.y","Bad Key":"1","UIBackgroundModes":[null]}}}',
+    });
+    final r = ResolvedAppConfig.resolve(a, const BuildOptions());
+    expect(r.iosInfoPlist, {
+      'NSLocalNetworkUsageDescription': 'Поиск камер',
+      'NSBonjourServices': ['_http._tcp'],
+      'UIFileSharingEnabled': true,
+      'NSAppTransportSecurity': {'NSAllowsLocalNetworking': true},
+    });
+    expect(a.warnings.where((w) => w.contains('ios.infoPlist')), hasLength(3));
+    expect(r.permissions, {AppPermission.wifi});
   });
 
   test('remote start url forces internet permission', () {

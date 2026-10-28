@@ -16,6 +16,7 @@ class PromptController extends ChangeNotifier {
   final description = TextEditingController();
   final remoteUrl = TextEditingController();
 
+  PromptPlatform platform = PromptPlatform.android;
   PromptAppType appType = PromptAppType.utility;
   GameEngine gameEngine = GameEngine.canvas;
   WebServiceMode webServiceMode = WebServiceMode.apiClient;
@@ -35,6 +36,7 @@ class PromptController extends ChangeNotifier {
   static const themeColors = ['#1565C0', '#2E7D32', '#6A1B9A', '#C62828', '#EF6C00', '#00838F', '#37474F', '#AD1457'];
 
   PromptConfig get config => PromptConfig(
+        platform: platform,
         appType: appType,
         appName: appName.text.trim(),
         packageName: packageName.text.trim(),
@@ -55,6 +57,11 @@ class PromptController extends ChangeNotifier {
 
   /// Language / technology the AI writes the app in.
   PromptTech get tech => PromptTech.of(config);
+
+  /// Project type of the prompt: iPhone prompts are always Flutter.
+  PromptAppType get effectiveType => platform == PromptPlatform.iphone ? PromptAppType.flutter : appType;
+
+  void setPlatform(PromptPlatform value) => update((c) => c.platform = value);
 
   void setTech(PromptTech value) => update((c) {
         switch (value) {
@@ -89,7 +96,7 @@ class PromptController extends ChangeNotifier {
 
   void update(void Function(PromptController c) change) {
     change(this);
-    if (appType.usesWebView) permissions = permissions.where(AppPermission.webSupported.contains).toSet();
+    if (effectiveType.usesWebView) permissions = permissions.where(AppPermission.webSupported.contains).toSet();
     notifyListeners();
   }
 

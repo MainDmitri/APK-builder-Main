@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:appbuilder_core/appbuilder_core.dart';
@@ -67,6 +68,16 @@ void main() {
     try {
       final project = p.join(tmp.path, 'project');
       copyDirectory(p.join('samples', 'flutter-counter'), project);
+      final config = File(p.join(project, 'appbuilder.json'));
+      config.writeAsStringSync(jsonEncode({
+        ...jsonDecode(config.readAsStringSync()) as Map<String, dynamic>,
+        'ios': {
+          'infoPlist': {
+            'NSLocalNetworkUsageDescription': 'Поиск камер в сети',
+            'NSBonjourServices': ['_http._tcp'],
+          },
+        },
+      }));
       final analysis = const ProjectAnalyzer().analyze(DirectorySource(project));
       expect(analysis.kind, ProjectKind.flutterProject);
       final app = ResolvedAppConfig.resolve(
@@ -76,7 +87,7 @@ void main() {
           packageName: 'com.example.my_counter',
           versionCode: 7,
           orientation: ScreenOrientation.landscape,
-          permissions: {AppPermission.camera, AppPermission.location},
+          permissions: {AppPermission.camera, AppPermission.location, AppPermission.wifi},
         ),
       );
       await FlutterStage(testConfig(tmp.path)).prepare(
@@ -93,6 +104,7 @@ void main() {
       final manifest = File(p.join(project, 'android', 'app', 'src', 'main', 'AndroidManifest.xml')).readAsStringSync();
       expect(manifest, contains('android:label="Мой счётчик"'));
       expect(manifest, contains('android.permission.CAMERA'));
+      expect(manifest, contains('android.permission.ACCESS_WIFI_STATE'));
       expect(manifest, contains('android:screenOrientation="sensorLandscape"'));
       final res = p.join(project, 'android', 'app', 'src', 'main', 'res');
       final icon = img.decodePng(File(p.join(res, 'mipmap-xxxhdpi', 'ic_launcher.png')).readAsBytesSync())!;
@@ -106,6 +118,10 @@ void main() {
       expect(plist, contains('<string>Мой счётчик</string>'));
       expect(plist, contains('NSCameraUsageDescription'));
       expect(plist, contains('NSLocationWhenInUseUsageDescription'));
+      expect(plist, contains('<key>NSLocalNetworkUsageDescription</key>\n\t<string>Поиск камер в сети</string>'));
+      expect(plist, contains('<string>_http._tcp</string>'));
+      expect(plist, contains('<key>NSAllowsLocalNetworking</key>'));
+      expect(plist, contains('UIApplicationSceneManifest'));
       expect(plist, contains('UIInterfaceOrientationLandscapeLeft'));
       expect(plist, isNot(contains('<string>UIInterfaceOrientationPortrait</string>')));
       final iconSet = Directory(p.join(project, 'ios', 'Runner', 'Assets.xcassets', 'AppIcon.appiconset'));

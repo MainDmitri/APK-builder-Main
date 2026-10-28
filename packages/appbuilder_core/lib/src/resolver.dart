@@ -19,6 +19,7 @@ class ResolvedAppConfig {
     required this.startUrl,
     required this.openLinksExternally,
     this.extraAndroidPermissions = const [],
+    this.iosInfoPlist = const {},
   });
 
   final String appName;
@@ -39,11 +40,17 @@ class ResolvedAppConfig {
   /// Android permissions of appbuilder.json beyond [permissions] (native and Flutter apps).
   final List<String> extraAndroidPermissions;
 
-  /// Everything that goes into AndroidManifest.xml of a native or Flutter app.
-  List<ManifestPermission> get manifestPermissions => [
-        ...permissions.expand((perm) => perm.manifestPermissions),
-        ...extraAndroidPermissions.map(ManifestPermission.new),
-      ];
+  /// Info.plist keys from appbuilder.json (`ios.infoPlist`), applied over the engine's defaults.
+  final Map<String, Object> iosInfoPlist;
+
+  /// Everything that goes into AndroidManifest.xml of a native or Flutter app (each name once).
+  List<ManifestPermission> get manifestPermissions {
+    final seen = <String>{};
+    return [
+      ...permissions.expand((perm) => perm.manifestPermissions),
+      ...extraAndroidPermissions.map(ManifestPermission.new),
+    ].where((m) => seen.add(m.name)).toList();
+  }
 
   bool get isRemoteStart => startUrl.startsWith('https://') || startUrl.startsWith('http://');
 
@@ -70,6 +77,7 @@ class ResolvedAppConfig {
         'startUrl': startUrl,
         'openLinksExternally': openLinksExternally,
         if (extraAndroidPermissions.isNotEmpty) 'extraAndroidPermissions': extraAndroidPermissions,
+        if (iosInfoPlist.isNotEmpty) 'iosInfoPlist': iosInfoPlist,
       };
 
   static ResolvedAppConfig resolve(ProjectAnalysis analysis, BuildOptions options) {
@@ -138,6 +146,7 @@ class ResolvedAppConfig {
       startUrl: startUrl,
       openLinksExternally: config.openLinksExternally ?? true,
       extraAndroidPermissions: config.androidPermissions,
+      iosInfoPlist: config.iosInfoPlist,
     );
   }
 

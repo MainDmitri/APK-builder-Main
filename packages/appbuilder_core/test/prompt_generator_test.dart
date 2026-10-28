@@ -40,11 +40,38 @@ void main() {
     expect(PromptTech.of(base), PromptTech.javascript);
     expect(PromptTech.of(base.copyWith(appType: PromptAppType.nodeSpa, spaFramework: SpaFramework.vue)), PromptTech.vue);
     expect(PromptTech.of(base.copyWith(appType: PromptAppType.flutter)), PromptTech.flutter);
-    expect(PromptTech.kotlin.iphone, isFalse);
+    expect(PromptTech.of(base.copyWith(platform: PromptPlatform.iphone, appType: PromptAppType.nativeAndroid)), PromptTech.flutter);
     expect(generator.generate(base.copyWith(appType: PromptAppType.nodeSpa)), contains('| Язык / технология | React (JavaScript) |'));
-    expect(generator.generate(base), contains('Android (APK) и iPhone (.ipa)'));
-    expect(generator.generate(base), contains('100dvh'));
-    expect(generator.generate(base.copyWith(appType: PromptAppType.nativeAndroid)), contains('| Платформы | Android (APK) |'));
+    expect(generator.generate(base), contains('| Платформа | Android (APK)'));
+    expect(generator.generate(base), isNot(contains('iPhone')));
+  });
+
+  test('iPhone prompt: real Flutter app with Info.plist keys and iOS network rules', () {
+    final prompt = generator.generate(base.copyWith(
+      platform: PromptPlatform.iphone,
+      appType: PromptAppType.utility,
+      permissions: {AppPermission.internet, AppPermission.wifi, AppPermission.camera, AppPermission.notifications},
+    ));
+    expect(prompt, contains('приложение для **iPhone**'));
+    expect(prompt, contains('| Платформа | iPhone (.ipa), iOS 13'));
+    expect(prompt, contains('flutter build ios --release --no-codesign'));
+    expect(prompt, contains('network_info_plus: ${Toolchain.flutterPackages['network_info_plus']}'));
+    expect(prompt, contains('connectivity_plus: ${Toolchain.flutterPackages['connectivity_plus']}'));
+    expect(prompt, contains('NSLocalNetworkUsageDescription'));
+    expect(prompt, contains('com.apple.developer.networking.multicast'));
+    expect(prompt, contains('getWifiName()'));
+    expect(prompt, contains('permission_handler'));
+    expect(prompt, contains('## Интерфейс в стиле iPhone'));
+    final appBuilder = jsonBlocks(prompt).whereType<Map>().firstWhere((m) => m.containsKey('packageName'));
+    final plist = (appBuilder['ios'] as Map)['infoPlist'] as Map;
+    expect(plist.keys, containsAll(['NSCameraUsageDescription', 'NSLocalNetworkUsageDescription', 'NSLocationWhenInUseUsageDescription']));
+    expect(appBuilder['permissions'], containsAll(['wifi', 'notifications']));
+    // The generated appbuilder.json is accepted by the analyzer as is.
+    final errors = <String>[], warnings = <String>[];
+    final parsed = AppBuilderConfig.parse(jsonEncode(appBuilder), errors, warnings);
+    expect(errors, isEmpty);
+    expect(warnings, isEmpty);
+    expect(parsed.iosInfoPlist.keys, plist.keys);
   });
 
   test('Flutter prompt: pubspec with verified packages, no platform folders', () {
@@ -53,7 +80,7 @@ void main() {
       storage: StorageKind.database,
       permissions: {AppPermission.internet, AppPermission.camera, AppPermission.notifications},
     ));
-    expect(prompt, contains('для Android и iPhone'));
+    expect(prompt, contains('Android-приложение «Заметки» на Flutter'));
     expect(prompt, contains('name: notes'));
     expect(prompt, contains('sqflite: ${Toolchain.flutterPackages['sqflite']}'));
     expect(prompt, contains('image_picker: ${Toolchain.flutterPackages['image_picker']}'));

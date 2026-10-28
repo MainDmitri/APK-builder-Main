@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import '../build_log.dart';
 import '../config.dart';
 import 'icons.dart';
+import 'plist.dart';
 import 'templates.dart';
 import 'web_shell.dart';
 
@@ -111,6 +112,16 @@ class IosShellGenerator {
       ],
       'info': {'author': 'xcode', 'version': 1},
     }));
+
+    if (app.iosInfoPlist.isNotEmpty) {
+      final plistFile = File(p.join(appDir, 'Info.plist'));
+      var plist = plistFile.readAsStringSync();
+      for (final entry in app.iosInfoPlist.entries) {
+        plist = PlistEditor.set(plist, entry.key, entry.value);
+      }
+      plistFile.writeAsStringSync(plist);
+      log.add('Info.plist из appbuilder.json: ${app.iosInfoPlist.keys.join(', ')}');
+    }
 
     log.add('iOS-проект: bundle id ${bundleId(app.packageName)}, версия ${shortVersion(app.versionName)} '
         '(${app.versionCode}), iOS $deploymentTarget+, конфигурация ${jsonEncode(shellConfig)}');

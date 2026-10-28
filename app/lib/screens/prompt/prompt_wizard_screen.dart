@@ -58,8 +58,8 @@ class _PromptWizardScreenState extends State<PromptWizardScreen> {
                   ),
             steps: [
               Step(
-                title: const Text('Язык и тип приложения'),
-                subtitle: Text('${c.tech.title} · ${c.tech.platforms}'),
+                title: const Text('Платформа и язык'),
+                subtitle: Text('${c.platform.title} · ${c.tech.title}'),
                 isActive: _step >= 0,
                 state: _step > 0 ? StepState.complete : StepState.indexed,
                 content: _typeStep(c),
@@ -94,66 +94,87 @@ class _PromptWizardScreenState extends State<PromptWizardScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('На каком языке ИИ напишет приложение', style: theme.textTheme.labelLarge),
+        Text('Для какой платформы промпт', style: theme.textTheme.labelLarge),
         const SizedBox(height: 8),
-        for (final tech in PromptTech.values)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Card(
-              color: c.tech == tech ? scheme.primaryContainer : null,
-              child: ListTile(
-                leading: Icon(_techIcons[tech]),
-                title: Text(tech.title),
-                subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(tech.description),
-                  const SizedBox(height: 6),
-                  Wrap(spacing: 6, children: [
-                    _platformChip(Icons.android, 'Android'),
-                    if (tech.iphone) _platformChip(Icons.phone_iphone, 'iPhone'),
-                  ]),
-                ]),
-                trailing: c.tech == tech ? Icon(Icons.check_circle, color: scheme.primary) : null,
-                onTap: () => c.setTech(tech),
+        Row(children: [
+          for (final platform in PromptPlatform.values)
+            Expanded(
+              child: Card(
+                color: c.platform == platform ? scheme.primaryContainer : null,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: () => c.setPlatform(platform),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+                    child: Column(children: [
+                      Icon(platform == PromptPlatform.android ? Icons.android : Icons.phone_iphone, size: 32),
+                      const SizedBox(height: 6),
+                      Text(platform.title, style: theme.textTheme.titleMedium),
+                      Text(platform == PromptPlatform.android ? 'APK' : '.ipa', style: theme.textTheme.bodySmall),
+                    ]),
+                  ),
+                ),
               ),
             ),
-          ),
-        ...switch (c.tech) {
-          PromptTech.javascript => [
-              _label('Что за приложение'),
-              _segmented<PromptAppType>(_webKinds, c.appType, (v) => c.update((p) => p.appType = v), (v) => v.title),
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text(c.appType.examples, style: theme.textTheme.bodySmall),
+        ]),
+        const SizedBox(height: 8),
+        if (c.platform == PromptPlatform.iphone)
+          NoticeBox(
+            text: 'iPhone: ИИ напишет настоящее нативное приложение на Flutter (Dart). Сборщик соберёт его в .ipa на '
+                'macOS — на вкладке «Сборка» выберите «Только IPA». В промпте — подробные правила iOS: Wi-Fi и '
+                'локальная сеть, описания доступа в Info.plist, камера, файлы, работа в фоне, интерфейс в стиле iPhone '
+                'и ограничения установки через Sideloadly.',
+            color: scheme.primary,
+            icon: Icons.phone_iphone,
+          )
+        else ...[
+          Text('На каком языке ИИ напишет приложение', style: theme.textTheme.labelLarge),
+          const SizedBox(height: 8),
+          for (final tech in PromptTech.values)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Card(
+                color: c.tech == tech ? scheme.primaryContainer : null,
+                child: ListTile(
+                  leading: Icon(_techIcons[tech]),
+                  title: Text(tech.title),
+                  subtitle: Text(tech.description),
+                  trailing: c.tech == tech ? Icon(Icons.check_circle, color: scheme.primary) : null,
+                  onTap: () => c.setTech(tech),
+                ),
               ),
-              if (c.appType == PromptAppType.game) ...[
-                _label('Движок'),
-                _segmented<GameEngine>(GameEngine.values, c.gameEngine, (v) => c.update((p) => p.gameEngine = v), (v) => v.title),
+            ),
+          ...switch (c.tech) {
+            PromptTech.javascript => [
+                _label('Что за приложение'),
+                _segmented<PromptAppType>(_webKinds, c.appType, (v) => c.update((p) => p.appType = v), (v) => v.title),
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(c.appType.examples, style: theme.textTheme.bodySmall),
+                ),
+                if (c.appType == PromptAppType.game) ...[
+                  _label('Движок'),
+                  _segmented<GameEngine>(GameEngine.values, c.gameEngine, (v) => c.update((p) => p.gameEngine = v), (v) => v.title),
+                ],
+                if (c.appType == PromptAppType.webService) ...[
+                  _label('Режим'),
+                  _segmented<WebServiceMode>(
+                      WebServiceMode.values, c.webServiceMode, (v) => c.update((p) => p.webServiceMode = v), (v) => v.title),
+                ],
               ],
-              if (c.appType == PromptAppType.webService) ...[
-                _label('Режим'),
-                _segmented<WebServiceMode>(
-                    WebServiceMode.values, c.webServiceMode, (v) => c.update((p) => p.webServiceMode = v), (v) => v.title),
+            PromptTech.kotlin => [
+                _label('Интерфейс'),
+                _segmented<NativeUi>(NativeUi.values, c.nativeUi, (v) => c.update((p) => p.nativeUi = v), (v) => v.title),
               ],
-            ],
-          PromptTech.kotlin => [
-              _label('Интерфейс'),
-              _segmented<NativeUi>(NativeUi.values, c.nativeUi, (v) => c.update((p) => p.nativeUi = v), (v) => v.title),
-            ],
-          PromptTech.react || PromptTech.vue || PromptTech.flutter => const <Widget>[],
-        },
+            PromptTech.react || PromptTech.vue || PromptTech.flutter => const <Widget>[],
+          },
+        ],
       ],
     );
   }
 
-  Widget _platformChip(IconData icon, String label) => Chip(
-        avatar: Icon(icon, size: 16),
-        label: Text(label),
-        visualDensity: VisualDensity.compact,
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      );
-
   Widget _ideaStep(PromptController c) {
-    final needsUrl = c.appType == PromptAppType.webService;
+    final needsUrl = c.effectiveType == PromptAppType.webService;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -202,7 +223,8 @@ class _PromptWizardScreenState extends State<PromptWizardScreen> {
   }
 
   Widget _paramsStep(PromptController c) {
-    final perms = c.appType.usesWebView ? AppPermission.values.where(AppPermission.webSupported.contains) : AppPermission.values;
+    final perms =
+        c.effectiveType.usesWebView ? AppPermission.values.where(AppPermission.webSupported.contains) : AppPermission.values;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -283,7 +305,9 @@ class _PromptWizardScreenState extends State<PromptWizardScreen> {
           label: const Text('Сохранить как .md'),
         ),
         const SizedBox(height: 12),
-        Text('${prompt.length} символов · ответ ИИ упакуйте в ZIP и соберите на вкладке «Сборка»',
+        Text(
+            '${prompt.length} символов · ответ ИИ упакуйте в ZIP и соберите на вкладке «Сборка»'
+            '${c.platform == PromptPlatform.iphone ? ' (режим «Только IPA»)' : ''}',
             style: Theme.of(context).textTheme.bodySmall),
         const SizedBox(height: 8),
         Container(

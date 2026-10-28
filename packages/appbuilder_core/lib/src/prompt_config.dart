@@ -6,7 +6,7 @@ enum PromptAppType {
   game('game', '2D Canvas / WebGL игра', 'Phaser, Three.js, чистый Canvas'),
   nativeAndroid('native', 'Нативный Android-проект', 'Камера, датчики, сервисы на Kotlin'),
   nodeSpa('node-spa', 'Node.js SPA', 'React или Vue + Vite + Tailwind'),
-  flutter('flutter', 'Flutter: Android + iPhone', 'Нативное приложение на Dart, один код для обеих платформ');
+  flutter('flutter', 'Flutter', 'Нативное приложение на Dart');
 
   const PromptAppType(this.id, this.title, this.examples);
 
@@ -21,27 +21,32 @@ enum PromptAppType {
   bool get usesWebView => !isNative && !isFlutter;
 }
 
-/// Language / technology the AI writes the app in (first choice of the
-/// prompt wizard). Maps onto [PromptAppType] and [SpaFramework].
-enum PromptTech {
-  javascript('HTML + JavaScript', 'Без сборки: утилиты, клиенты сайтов и API, игры на Canvas / Phaser / Three.js',
-      iphone: true),
-  react('React (JavaScript)', 'React 19 + Vite + Tailwind CSS: сложные интерфейсы, много экранов', iphone: true),
-  vue('Vue (JavaScript)', 'Vue 3 + Vite + Tailwind CSS: сложные интерфейсы, много экранов', iphone: true),
-  flutter('Flutter (Dart)', 'Нативное приложение: один код, быстрый интерфейс, плагины', iphone: true),
-  kotlin('Kotlin', 'Нативный Android: Jetpack Compose или XML-разметка, полный доступ к Android API', iphone: false);
+/// Platform a prompt is written for: separate, platform-specific prompts.
+enum PromptPlatform {
+  android('Android', 'APK для телефонов и планшетов Android: веб, React, Vue, Flutter или Kotlin'),
+  iphone('iPhone', '.ipa для iPhone: настоящее нативное приложение на Flutter (Dart)');
 
-  const PromptTech(this.title, this.description, {required this.iphone});
+  const PromptPlatform(this.title, this.description);
+
+  final String title;
+  final String description;
+}
+
+/// Language / technology of an Android prompt (iPhone prompts are always
+/// Flutter). Maps onto [PromptAppType] and [SpaFramework].
+enum PromptTech {
+  javascript('HTML + JavaScript', 'Без сборки: утилиты, клиенты сайтов и API, игры на Canvas / Phaser / Three.js'),
+  react('React (JavaScript)', 'React 19 + Vite + Tailwind CSS: сложные интерфейсы, много экранов'),
+  vue('Vue (JavaScript)', 'Vue 3 + Vite + Tailwind CSS: сложные интерфейсы, много экранов'),
+  flutter('Flutter (Dart)', 'Нативное приложение: быстрый интерфейс, плагины pub.dev'),
+  kotlin('Kotlin', 'Нативный Android: Jetpack Compose или XML-разметка, полный доступ к Android API');
+
+  const PromptTech(this.title, this.description);
 
   final String title;
   final String description;
 
-  /// Can also be built as an .ipa for iPhone.
-  final bool iphone;
-
-  String get platforms => iphone ? 'Android и iPhone' : 'только Android';
-
-  static PromptTech of(PromptConfig c) => switch (c.appType) {
+  static PromptTech of(PromptConfig c) => switch (c.effectiveType) {
         PromptAppType.nodeSpa => c.spaFramework == SpaFramework.react ? react : vue,
         PromptAppType.flutter => flutter,
         PromptAppType.nativeAndroid => kotlin,
@@ -119,6 +124,7 @@ enum UiLanguage {
 /// Everything the user picks in the prompt wizard.
 class PromptConfig {
   const PromptConfig({
+    this.platform = PromptPlatform.android,
     this.appType = PromptAppType.utility,
     this.appName = '',
     this.packageName = '',
@@ -138,6 +144,9 @@ class PromptConfig {
     this.includeFullContract = false,
   });
 
+  final PromptPlatform platform;
+
+  /// Ignored for iPhone prompts: they are always Flutter (see [effectiveType]).
   final PromptAppType appType;
   final String appName;
   final String packageName;
@@ -160,15 +169,21 @@ class PromptConfig {
   final NativeUi nativeUi;
   final bool includeFullContract;
 
+  bool get isIphone => platform == PromptPlatform.iphone;
+
+  /// Project type actually generated: iPhone prompts are always Flutter.
+  PromptAppType get effectiveType => isIphone ? PromptAppType.flutter : appType;
+
   /// Whether the generated project goes through the npm build stage.
   bool get usesNode =>
-      appType == PromptAppType.nodeSpa ||
-      (appType == PromptAppType.game && gameEngine != GameEngine.canvas);
+      effectiveType == PromptAppType.nodeSpa ||
+      (effectiveType == PromptAppType.game && gameEngine != GameEngine.canvas);
 
   /// Remote URL is required for web services.
-  bool get needsRemoteUrl => appType == PromptAppType.webService;
+  bool get needsRemoteUrl => effectiveType == PromptAppType.webService;
 
   PromptConfig copyWith({
+    PromptPlatform? platform,
     PromptAppType? appType,
     String? appName,
     String? packageName,
@@ -188,6 +203,7 @@ class PromptConfig {
     bool? includeFullContract,
   }) =>
       PromptConfig(
+        platform: platform ?? this.platform,
         appType: appType ?? this.appType,
         appName: appName ?? this.appName,
         packageName: packageName ?? this.packageName,

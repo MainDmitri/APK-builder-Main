@@ -8,6 +8,11 @@ name: Inbox build
 # Flutter projects): the iOS project is prepared here, compiled by the "ios" job
 # on macOS and attached to the same release (ios-result.json, ios-build.log).
 # "android": false skips the APK (iPhone only).
+#
+# SDK cache: what a build downloads once (Android NDK and SDK parts, Gradle,
+# Gradle/pub/npm packages; CocoaPods and pub on macOS) is saved with
+# actions/cache and restored in the next runs. A new cache entry is written only
+# when something new was downloaded (see .github/scripts/sdk-cache.sh).
 
 on:
   push:
@@ -24,6 +29,15 @@ concurrency:
 
 env:
   GRADLE_VERSION: 9.3.1
+  SDK_CACHE_PATHS_LINUX: |
+    ~/.appbuilder-sdk
+    ~/.gradle/caches/modules-2
+    ~/.gradle/wrapper
+    ~/.pub-cache
+    ~/.npm
+  SDK_CACHE_PATHS_MACOS: |
+    ~/Library/Caches/CocoaPods
+    ~/.pub-cache
 
 jobs:
   build:
@@ -57,6 +71,17 @@ jobs:
           echo "ids=${pending# }" >> "$GITHUB_OUTPUT"
           echo "android=$android" >> "$GITHUB_OUTPUT"
           echo "Pending: ${pending:-none} (APK needed: $android)"
+      - name: Restore SDK cache (NDK, Gradle, pub, npm)
+        id: sdk-restore
+        if: steps.pending.outputs.ids != ''
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.SDK_CACHE_PATHS_LINUX }}
+          key: appbuilder-sdk-linux-v1-${{ github.run_id }}
+          restore-keys: appbuilder-sdk-linux-v1-
+      - name: Link cached Android SDK parts
+        if: steps.pending.outputs.ids != ''
+        run: bash .github/scripts/sdk-cache.sh link
       - name: Detect Flutter projects
         id: flutter
         if: steps.pending.outputs.ids != ''
@@ -95,25 +120,22 @@ jobs:
         run: |
           sudo apt-get update -q && sudo apt-get install -y -q librsvg2-bin fonts-dejavu-core
           if [ "$ANDROID_NEEDED" = "true" ]; then
-            curl -fsSL -o /tmp/gradle.zip "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip"
-            unzip -q /tmp/gradle.zip -d "$HOME"
-            echo "$HOME/gradle-${GRADLE_VERSION}/bin" >> "$GITHUB_PATH"
+            gradle_home="$HOME/.appbuilder-sdk/gradle/gradle-${GRADLE_VERSION}"
+            if [ ! -x "$gradle_home/bin/gradle" ]; then
+              curl -fsSL -o /tmp/gradle.zip "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip"
+              mkdir -p "$(dirname "$gradle_home")" && unzip -q /tmp/gradle.zip -d "$(dirname "$gradle_home")"
+            else
+              echo "Gradle ${GRADLE_VERSION}: из кэша"
+            fi
+            echo "$gradle_home/bin" >> "$GITHUB_PATH"
           fi
           corepack enable
-      - name: Restore debug keystore (stable signature between builds) and Gradle cache
+      - name: Restore debug keystore (stable signature between builds)
         if: steps.pending.outputs.ids != ''
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/appbuilder-data/keys
           key: appbuilder-debug-keystore-v1
-      - uses: actions/cache@v4
-        if: steps.pending.outputs.android == 'true'
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ hashFiles('engine/templates/**', 'packages/appbuilder_core/lib/src/toolchain.dart') }}
-          restore-keys: gradle-
       - name: Prepare engine
         if: steps.pending.outputs.ids != ''
         working-directory: engine
@@ -250,6 +272,19 @@ jobs:
               --title "$title" --notes "$notes" "$out/build.log" "$out/result.json" "${extra[@]}"
           done
 
+      - name: Collect new SDK parts and compute the cache key
+        id: sdk-key
+        if: always() && steps.pending.outputs.ids != ''
+        run: |
+          bash .github/scripts/sdk-cache.sh collect
+          bash .github/scripts/sdk-cache.sh key appbuilder-sdk-linux-v1-
+      - name: Save SDK cache (only when something new was downloaded)
+        if: always() && steps.sdk-key.outputs.key != '' && steps.sdk-key.outputs.key != steps.sdk-restore.outputs.cache-matched-key
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.SDK_CACHE_PATHS_LINUX }}
+          key: ${{ steps.sdk-key.outputs.key }}
+
   ios:
     name: iPhone (.ipa, macOS)
     needs: build
@@ -264,6 +299,13 @@ jobs:
         with:
           name: ios-projects
           path: ios
+      - name: Restore build cache (CocoaPods, pub)
+        id: sdk-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.SDK_CACHE_PATHS_MACOS }}
+          key: appbuilder-sdk-macos-v1-${{ github.run_id }}
+          restore-keys: appbuilder-sdk-macos-v1-
       - uses: subosito/flutter-action@v2
         if: needs.build.outputs.ios_flutter == 'true'
         with:
@@ -297,3 +339,13 @@ jobs:
             tail -5 "$out/ios-build.log"
             gh release upload "build-$id" "${files[@]}" --clobber --repo "$GITHUB_REPOSITORY"
           done
+      - name: Compute the cache key
+        id: sdk-key
+        if: always()
+        run: bash .github/scripts/sdk-cache.sh key appbuilder-sdk-macos-v1-
+      - name: Save build cache (only when something new was downloaded)
+        if: always() && steps.sdk-key.outputs.key != '' && steps.sdk-key.outputs.key != steps.sdk-restore.outputs.cache-matched-key
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.SDK_CACHE_PATHS_MACOS }}
+          key: ${{ steps.sdk-key.outputs.key }}
