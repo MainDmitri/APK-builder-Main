@@ -7,6 +7,7 @@ export 'src/doctor.dart';
 export 'src/pipeline/build_pipeline.dart';
 export 'src/pipeline/gradle_stage.dart';
 export 'src/pipeline/icons.dart';
+export 'src/pipeline/ios_shell.dart';
 export 'src/pipeline/manifest_tools.dart';
 export 'src/pipeline/native_sources.dart';
 export 'src/pipeline/node_stage.dart';

@@ -7,7 +7,7 @@ import '../workspace.dart';
 /// Copies a template directory and substitutes `{{KEY}}` placeholders in
 /// text files. Fails loudly if a placeholder is left unresolved.
 abstract final class TemplateRenderer {
-  static const _textExtensions = {'.kts', '.xml', '.properties', '.java', '.gradle', '.json'};
+  static const _textExtensions = {'.kts', '.xml', '.properties', '.java', '.gradle', '.json', '.plist', '.yml', '.swift'};
   static final _placeholder = RegExp(r'\{\{([A-Z0-9_]+)\}\}');
 
   static void render(String templateDir, String targetDir, Map<String, String> values) {
@@ -43,6 +43,9 @@ String androidStringEscape(String value) {
   if (s.startsWith('@') || s.startsWith('?')) s = '\\$s';
   return s;
 }
+
+/// Escapes text for an XML property list `<string>`.
+String plistEscape(String value) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 
 /// Safe Gradle `rootProject.name`.
 String gradleProjectName(String packageName) {

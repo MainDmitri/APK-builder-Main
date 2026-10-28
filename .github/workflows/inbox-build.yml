@@ -4,6 +4,9 @@ name: Inbox build
 #   inbox/<id>/project.zip + inbox/<id>/request.json
 # and this workflow builds the APK with the same engine code and publishes it
 # as the pre-release "build-<id>" (assets: APK, build.log, result.json).
+# Requests with "ios": true also get an unsigned .ipa for iPhone (web projects
+# only): the Xcode project is generated here, compiled by the "ios" job on
+# macOS and attached to the same release (ios-result.json, ios-build.log).
 
 on:
   push:
@@ -25,6 +28,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    outputs:
+      ios_ids: ${{ steps.ios.outputs.ids }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -128,6 +133,52 @@ jobs:
             rm -f "$RUNNER_TEMP/release.keystore"
             [ -f "$out/result.json" ] || echo '{"success":false,"error":"Движок завершился без результата, см. build.log"}' > "$out/result.json"
           done
+      - name: Generate iOS projects (requests with ios = true)
+        id: ios
+        if: steps.pending.outputs.ids != ''
+        env:
+          IDS: ${{ steps.pending.outputs.ids }}
+          APPBUILDER_DATA: ${{ runner.temp }}/appbuilder-data
+          APPBUILDER_TEMPLATES: ${{ github.workspace }}/engine/templates
+        run: |
+          ready=""
+          for id in $IDS; do
+            dir="inbox/$id"
+            [ "$(jq -r '.ios // false' "$dir/request.json")" = "true" ] || continue
+            out="$RUNNER_TEMP/results/$id"
+            ios="$RUNNER_TEMP/ios/$id"
+            mkdir -p "$ios"
+            icon_args=()
+            icon=$(jq -r '.icon // empty' "$dir/request.json")
+            if [ -n "$icon" ] && [ -f "$dir/$(basename "$icon")" ]; then
+              icon_args=(--icon "../$dir/$(basename "$icon")")
+            fi
+            set +e
+            (cd engine && dart run bin/engine.dart ios-project "../$dir/project.zip" \
+                --options "@$out/options.json" "${icon_args[@]}" \
+                --out "$ios/project" --result-json "$ios/project.json") > "$ios/ios-build.log" 2>&1
+            code=$?
+            set -e
+            cat "$ios/ios-build.log"
+            if [ $code -eq 0 ]; then
+              ready="$ready $id"
+            else
+              # Not a web project or the npm build failed: report it without macOS.
+              jq '{success: false, error: (.error // "Не удалось подготовить iOS-проект, см. ios-build.log")}' \
+                "$ios/project.json" > "$out/ios-result.json" 2>/dev/null \
+                || echo '{"success":false,"error":"Не удалось подготовить iOS-проект, см. ios-build.log"}' > "$out/ios-result.json"
+              cp "$ios/ios-build.log" "$out/ios-build.log"
+              rm -rf "$ios"
+            fi
+          done
+          echo "ids=${ready# }" >> "$GITHUB_OUTPUT"
+          echo "iOS: ${ready:-none}"
+      - uses: actions/upload-artifact@v4
+        if: steps.ios.outputs.ids != ''
+        with:
+          name: ios-projects
+          path: ${{ runner.temp }}/ios
+          retention-days: 1
       - name: Publish results as pre-releases
         if: steps.pending.outputs.ids != ''
         env:
@@ -145,8 +196,50 @@ jobs:
               title="❌ Ошибка сборки $id"
               notes=$(jq -r '.error' "$out/result.json")
             fi
+            extra=()
+            for f in ios-result.json ios-build.log; do
+              [ -f "$out/$f" ] && extra+=("$out/$f")
+            done
             gh release create "build-$id" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
-              --title "$title" --notes "$notes" "$out"/*.apk "$out/build.log" "$out/result.json" 2>/dev/null \
+              --title "$title" --notes "$notes" "$out"/*.apk "$out/build.log" "$out/result.json" "${extra[@]}" 2>/dev/null \
             || gh release create "build-$id" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
-              --title "$title" --notes "$notes" "$out/build.log" "$out/result.json"
+              --title "$title" --notes "$notes" "$out/build.log" "$out/result.json" "${extra[@]}"
+          done
+
+  ios:
+    name: iPhone (.ipa, macOS)
+    needs: build
+    if: needs.build.outputs.ios_ids != ''
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: ios-projects
+          path: ios
+      - name: Build unsigned IPAs and attach them to the releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IDS: ${{ needs.build.outputs.ios_ids }}
+        run: |
+          for id in $IDS; do
+            dir="ios/$id"
+            out="$RUNNER_TEMP/ios-out/$id"
+            mkdir -p "$out"
+            cp "$dir/ios-build.log" "$out/ios-build.log"
+            name=$(jq -r '.ipaFileName' "$dir/project.json")
+            if bash .github/scripts/ios-build.sh "$dir/project" "$out" "$name" >> "$out/ios-build.log" 2>&1; then
+              jq --arg ipa "$name" --argjson size "$(stat -f%z "$out/$name")" \
+                '{success: true, ipa: $ipa, size: $size, bundleId: .bundleId, app: .app}' \
+                "$dir/project.json" > "$out/ios-result.json"
+              files=("$out/$name" "$out/ios-result.json" "$out/ios-build.log")
+            else
+              echo '{"success":false,"error":"Xcode не смог собрать приложение — подробности в ios-build.log"}' > "$out/ios-result.json"
+              files=("$out/ios-result.json" "$out/ios-build.log")
+            fi
+            tail -5 "$out/ios-build.log"
+            gh release upload "build-$id" "${files[@]}" --clobber --repo "$GITHUB_REPOSITORY"
           done

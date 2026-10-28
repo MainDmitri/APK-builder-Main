@@ -11,6 +11,7 @@ Future<void> main(List<String> args) async {
   final runner = CommandRunner<int>('appbuilder-engine', 'AppBuilder Engine — сборка APK из ZIP-проектов.')
     ..addCommand(ServeCommand())
     ..addCommand(BuildCommand())
+    ..addCommand(IosProjectCommand())
     ..addCommand(AnalyzeCommand())
     ..addCommand(ContractCommand())
     ..addCommand(DoctorCommand())
@@ -159,6 +160,70 @@ class BuildCommand extends Command<int> {
       return 0;
     } on BuildFailure catch (e) {
       stderr.writeln('ОШИБКА СБОРКИ: ${e.message}');
+      if (resultPath != null) {
+        File(resultPath).writeAsStringSync(jsonEncode({'success': false, 'error': e.message}));
+      }
+      return 1;
+    } finally {
+      await log.close();
+    }
+  }
+}
+
+class IosProjectCommand extends Command<int> {
+  IosProjectCommand() {
+    argParser
+      ..addOption('out', abbr: 'o', mandatory: true, help: 'Каталог для Xcode-проекта (XcodeGen project.yml)')
+      ..addOption('options', help: 'JSON с параметрами сборки (строка или @файл)')
+      ..addOption('icon', help: 'Картинка-иконка приложения (PNG/JPEG/WebP/SVG)')
+      ..addOption('work-dir', help: 'Рабочий каталог (по умолчанию временный)')
+      ..addOption('result-json', help: 'Записать результат в JSON-файл');
+  }
+
+  @override
+  String get name => 'ios-project';
+
+  @override
+  String get description => 'Сгенерировать iOS-проект (WKWebView) из веб-проекта в ZIP. '
+      'Сборка .ipa — на macOS: .github/scripts/ios-build.sh';
+
+  @override
+  Future<int> run() async {
+    final rest = argResults!.rest;
+    if (rest.length != 1) usageException('Укажите один ZIP-архив.');
+    final zip = File(rest.single);
+    if (!zip.existsSync()) usageException('Файл не найден: ${zip.path}');
+    final a = argResults!;
+    var options = const BuildOptions();
+    final rawOptions = a['options'] as String?;
+    if (rawOptions != null) {
+      final text = rawOptions.startsWith('@') ? File(rawOptions.substring(1)).readAsStringSync() : rawOptions;
+      options = BuildOptions.fromJson((jsonDecode(text) as Map).cast<String, Object?>());
+    }
+    final icon = a['icon'] as String?;
+    if (icon != null && icon.isNotEmpty && !File(icon).existsSync()) usageException('Файл иконки не найден: $icon');
+
+    final workDir = a['work-dir'] as String? ?? (await Directory.systemTemp.createTemp('appbuilder-ios')).path;
+    final log = BuildLog(File(p.join(workDir, 'ios.log')), echo: true);
+    final resultPath = a['result-json'] as String?;
+    try {
+      final outcome = await BuildPipeline(EngineConfig.fromEnvironment()).generateIosProject(
+        IosProjectRequest(
+          zipPath: zip.absolute.path,
+          workDir: workDir,
+          projectDir: Directory(a['out'] as String).absolute.path,
+          options: options,
+          iconPath: icon == null || icon.isEmpty ? null : File(icon).absolute.path,
+        ),
+        log,
+      );
+      stdout.writeln('iOS-проект: ${Directory(a['out'] as String).absolute.path}');
+      if (resultPath != null) {
+        File(resultPath).writeAsStringSync(jsonEncode({'success': true, ...outcome.toJson()}));
+      }
+      return 0;
+    } on BuildFailure catch (e) {
+      stderr.writeln('ОШИБКА: ${e.message}');
       if (resultPath != null) {
         File(resultPath).writeAsStringSync(jsonEncode({'success': false, 'error': e.message}));
       }

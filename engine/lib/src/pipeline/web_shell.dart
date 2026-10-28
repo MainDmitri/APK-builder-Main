@@ -18,6 +18,19 @@ class WebShellGenerator {
 
   static final _excluded = RegExp(r'(^|/)(\.git|__MACOSX|\.DS_Store|Thumbs\.db)(/|$)|\.(jks|keystore|p12|pfx)$');
 
+  /// `appbuilder-shell.json` read by the Android and iOS shells at start.
+  static Map<String, Object?> shellConfigOf(ResolvedAppConfig app) => {
+        'startUrl': app.startUrl,
+        'fullscreen': app.fullscreen,
+        'themeColor': app.themeColor,
+        'backgroundColor': app.backgroundColor,
+        'openLinksExternally': app.openLinksExternally,
+      };
+
+  /// Files of the web root that are not packaged into the app.
+  static bool isExcludedAsset(String relativePath) =>
+      relativePath == 'appbuilder.json' || _excluded.hasMatch(relativePath);
+
   Future<void> generate({
     required String webRoot,
     required String androidDir,
@@ -52,7 +65,7 @@ class WebShellGenerator {
     var files = 0;
     for (final e in Directory(webRoot).listSync(recursive: true, followLinks: false).whereType<File>()) {
       final rel = p.relative(e.path, from: webRoot).replaceAll('\\', '/');
-      if (rel == 'appbuilder.json' || _excluded.hasMatch(rel)) continue;
+      if (isExcludedAsset(rel)) continue;
       final target = File(p.join(www, rel));
       target.parent.createSync(recursive: true);
       e.copySync(target.path);
@@ -60,13 +73,7 @@ class WebShellGenerator {
     }
     log.add('Веб-ассеты: $files файлов → assets/www/');
 
-    final shellConfig = {
-      'startUrl': app.startUrl,
-      'fullscreen': app.fullscreen,
-      'themeColor': app.themeColor,
-      'backgroundColor': app.backgroundColor,
-      'openLinksExternally': app.openLinksExternally,
-    };
+    final shellConfig = shellConfigOf(app);
     File(p.join(mainDir, 'assets', 'appbuilder-shell.json'))
         .writeAsStringSync(const JsonEncoder.withIndent('  ').convert(shellConfig));
     log.add('Конфигурация оболочки: ${jsonEncode(shellConfig)}');

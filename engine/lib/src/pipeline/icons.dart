@@ -106,6 +106,39 @@ class LauncherIconGenerator {
     }
   }
 
+  /// Opaque square PNG for iOS (`AppIcon`, 1024×1024): iOS rounds the corners
+  /// itself, so the picture fills the whole square.
+  Future<Uint8List> squareIcon({
+    required String? sourcePath,
+    required String themeColor,
+    required String label,
+    int size = 1024,
+  }) async {
+    final tmp = await Directory.systemTemp.createTemp('appbuilder-icon');
+    try {
+      final source = sourcePath == null ? null : await _load(sourcePath, tmp.path);
+      var background = _parseColor(themeColor);
+      final canvas = img.Image(width: size, height: size, numChannels: 4);
+      if (source != null) {
+        final art = _square(source.convert(format: img.Format.uint8, numChannels: 4));
+        final corner = art.getPixel(0, 0);
+        final fullBleed = corner.a >= 250;
+        if (fullBleed) background = img.ColorRgba8(corner.r.toInt(), corner.g.toInt(), corner.b.toInt(), 255);
+        img.fill(canvas, color: background);
+        _drawCentered(canvas, art, (size * (fullBleed ? 1.0 : 0.72)).round());
+        log.add('Иконка iOS: ${p.basename(sourcePath!)} (${art.width}×${art.height}).');
+      } else {
+        img.fill(canvas, color: background);
+        _drawCentered(canvas, await _letter(label, background, tmp.path), size);
+        log.add('Иконка iOS не задана — сгенерирована буквенная.');
+      }
+      // App icons must not be transparent.
+      return img.encodePng(canvas.convert(numChannels: 3));
+    } finally {
+      await tmp.delete(recursive: true);
+    }
+  }
+
   Future<img.Image?> _load(String path, String tmpDir) async {
     final file = File(path);
     if (!file.existsSync()) {

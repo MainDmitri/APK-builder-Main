@@ -1,0 +1,82 @@
+name: iOS shell
+
+# Checks the iOS WebView shell end to end: Xcode projects are generated on
+# Linux (npm builds included), compiled into unsigned .ipa files on macOS and
+# one of them is launched in the iOS Simulator. Runs only when the iOS shell
+# changes: macOS minutes of private repositories count ten times.
+
+on:
+  push:
+    paths:
+      - 'engine/templates/ios_shell/**'
+      - 'engine/lib/src/pipeline/ios_shell.dart'
+      - '.github/workflows/ios.yml'
+      - '.github/scripts/ios-*.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  project:
+    name: Generate Xcode projects (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: 3.13.5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install librsvg, corepack
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q librsvg2-bin fonts-dejavu-core
+          corepack enable
+      - name: Generate projects of the samples
+        working-directory: engine
+        env:
+          APPBUILDER_TEMPLATES: ${{ github.workspace }}/engine/templates
+          APPBUILDER_DATA: ${{ runner.temp }}/appbuilder-data
+        run: |
+          dart pub get
+          for sample in static-notes vite-react; do
+            (cd "samples/$sample" && zip -qr "$RUNNER_TEMP/$sample.zip" .)
+            dart run bin/engine.dart ios-project "$RUNNER_TEMP/$sample.zip" \
+              --out "$RUNNER_TEMP/ios/$sample" --result-json "$RUNNER_TEMP/ios/$sample.json"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-projects
+          path: ${{ runner.temp }}/ios
+
+  xcode:
+    name: Xcode build + iOS Simulator
+    needs: project
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ios-projects
+          path: ios
+      - name: Build unsigned IPAs
+        run: |
+          for sample in static-notes vite-react; do
+            name=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["ipaFileName"])' "ios/$sample.json")
+            bash .github/scripts/ios-build.sh "ios/$sample" out "$name"
+            unzip -l "out/$name" | grep -q "Payload/App.app/App$" || { echo "::error::$name has no executable"; exit 1; }
+            unzip -l "out/$name" | grep -q "Payload/App.app/www/index.html" || { echo "::error::$name has no www/index.html"; exit 1; }
+          done
+      - name: Launch in the iOS Simulator
+        run: |
+          bundle=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["bundleId"])' ios/static-notes.json)
+          bash .github/scripts/ios-build.sh ios/static-notes sim - simulator
+          bash .github/scripts/ios-simulator-test.sh sim/App.app "$bundle" out
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-out
+          path: out/
